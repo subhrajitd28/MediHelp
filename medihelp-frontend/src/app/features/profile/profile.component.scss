@@ -1,0 +1,66 @@
+.profile-container {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.page-title {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 500;
+  color: #333;
+}
+
+.loading-container {
+  display: flex;
+  justify-content: center;
+  padding: 64px;
+}
+
+mat-card {
+  mat-card-header {
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+  }
+
+  mat-card-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 18px;
+  }
+}
+
+.spacer {
+  flex: 1 1 auto;
+}
+
+.form-row {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+
+  mat-form-field {
+    flex: 1;
+    min-width: 180px;
+  }
+}
+
+.full-width {
+  width: 100%;
+}
+
+.sub-form {
+  padding: 16px;
+  margin-bottom: 16px;
+  background: #fafafa;
+  border-radius: 8px;
+}
+
+.empty-text {
+  color: #999;
+  text-align: center;
+  padding: 16px;
+}

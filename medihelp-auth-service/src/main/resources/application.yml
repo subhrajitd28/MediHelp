@@ -1,0 +1,58 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: auth-service
+
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5433/medihelp_auth}
+    username: ${DB_USER:auth_user}
+    password: ${DB_PASSWORD:localdev}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:guest}
+    password: ${RABBITMQ_PASS:guest}
+
+jwt:
+  secret: ${JWT_SECRET:medihelp-super-secret-key-that-is-at-least-256-bits-long-for-hmac}
+  access-token-expiration-ms: 900000       # 15 minutes
+  refresh-token-expiration-ms: 5184000000  # 60 days
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka/}
+  instance:
+    prefer-ip-address: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, metrics, prometheus
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html

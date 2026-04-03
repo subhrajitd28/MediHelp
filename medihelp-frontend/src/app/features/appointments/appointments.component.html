@@ -1,0 +1,180 @@
+<div class="appointments-container">
+  <div class="page-header">
+    <h1 class="page-title">Appointments</h1>
+    <button mat-raised-button color="primary" (click)="showAddForm = !showAddForm">
+      <mat-icon>add</mat-icon>
+      {{ showAddForm ? 'Cancel' : 'New Appointment' }}
+    </button>
+  </div>
+
+  @if (showAddForm) {
+    <mat-card class="add-form-card">
+      <mat-card-header>
+        <mat-card-title>
+          <mat-icon>event_available</mat-icon>
+          Schedule Appointment
+        </mat-card-title>
+      </mat-card-header>
+      <mat-card-content>
+        <form [formGroup]="addForm" (ngSubmit)="onAddAppointment()">
+          <div class="form-row">
+            <mat-form-field appearance="outline">
+              <mat-label>Doctor Name</mat-label>
+              <input matInput formControlName="doctorName">
+            </mat-form-field>
+            <mat-form-field appearance="outline">
+              <mat-label>Hospital / Clinic</mat-label>
+              <input matInput formControlName="hospital">
+            </mat-form-field>
+          </div>
+          <div class="form-row">
+            <mat-form-field appearance="outline">
+              <mat-label>Specialization</mat-label>
+              <input matInput formControlName="specialization">
+            </mat-form-field>
+            <mat-form-field appearance="outline">
+              <mat-label>Purpose</mat-label>
+              <input matInput formControlName="purpose">
+            </mat-form-field>
+          </div>
+          <div class="form-row">
+            <mat-form-field appearance="outline">
+              <mat-label>Date</mat-label>
+              <input matInput [matDatepicker]="datePicker" formControlName="scheduledDate">
+              <mat-datepicker-toggle matSuffix [for]="datePicker"></mat-datepicker-toggle>
+              <mat-datepicker #datePicker></mat-datepicker>
+            </mat-form-field>
+            <mat-form-field appearance="outline">
+              <mat-label>Time</mat-label>
+              <input matInput type="time" formControlName="scheduledTime">
+            </mat-form-field>
+          </div>
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>Notes (optional)</mat-label>
+            <textarea matInput formControlName="notes" rows="2"></textarea>
+          </mat-form-field>
+          <button mat-raised-button color="accent" type="submit"
+                  [disabled]="addForm.invalid || saving">
+            @if (saving) {
+              <mat-spinner diameter="20"></mat-spinner>
+            } @else {
+              Schedule Appointment
+            }
+          </button>
+        </form>
+      </mat-card-content>
+    </mat-card>
+  }
+
+  @if (loading) {
+    <div class="loading-container">
+      <mat-spinner></mat-spinner>
+    </div>
+  } @else {
+    <mat-tab-group>
+      <!-- Upcoming Tab -->
+      <mat-tab label="Upcoming">
+        <div class="tab-content">
+          @if (upcomingAppointments.length > 0) {
+            <div class="appointments-list">
+              @for (apt of upcomingAppointments; track apt.id) {
+                <mat-card class="appointment-card">
+                  <mat-card-content>
+                    <div class="apt-header">
+                      <div class="apt-doctor">
+                        <mat-icon>person</mat-icon>
+                        Dr. {{ apt.doctorName }}
+                      </div>
+                      <mat-chip [color]="getStatusColor(apt.status)">{{ apt.status }}</mat-chip>
+                    </div>
+                    <div class="apt-details">
+                      <div class="detail">
+                        <mat-icon>local_hospital</mat-icon>
+                        {{ apt.hospital }}
+                      </div>
+                      @if (apt.specialization) {
+                        <div class="detail">
+                          <mat-icon>medical_services</mat-icon>
+                          {{ apt.specialization }}
+                        </div>
+                      }
+                      <div class="detail">
+                        <mat-icon>description</mat-icon>
+                        {{ apt.purpose }}
+                      </div>
+                      <div class="detail">
+                        <mat-icon>schedule</mat-icon>
+                        {{ apt.scheduledAt | date:'medium' }}
+                      </div>
+                      @if (apt.notes) {
+                        <div class="detail notes">
+                          <mat-icon>notes</mat-icon>
+                          {{ apt.notes }}
+                        </div>
+                      }
+                    </div>
+                  </mat-card-content>
+                  <mat-card-actions>
+                    @if (apt.status === 'SCHEDULED') {
+                      <button mat-stroked-button color="warn" (click)="cancelAppointment(apt.id)">
+                        <mat-icon>cancel</mat-icon>
+                        Cancel
+                      </button>
+                    }
+                  </mat-card-actions>
+                </mat-card>
+              }
+            </div>
+          } @else {
+            <div class="empty-state">
+              <mat-icon>event_busy</mat-icon>
+              <p>No upcoming appointments.</p>
+            </div>
+          }
+        </div>
+      </mat-tab>
+
+      <!-- All Tab -->
+      <mat-tab label="All Appointments">
+        <div class="tab-content">
+          @if (allAppointments.length > 0) {
+            <div class="appointments-list">
+              @for (apt of allAppointments; track apt.id) {
+                <mat-card class="appointment-card">
+                  <mat-card-content>
+                    <div class="apt-header">
+                      <div class="apt-doctor">
+                        <mat-icon>person</mat-icon>
+                        Dr. {{ apt.doctorName }}
+                      </div>
+                      <mat-chip [color]="getStatusColor(apt.status)">{{ apt.status }}</mat-chip>
+                    </div>
+                    <div class="apt-details">
+                      <div class="detail">
+                        <mat-icon>local_hospital</mat-icon>
+                        {{ apt.hospital }}
+                      </div>
+                      <div class="detail">
+                        <mat-icon>description</mat-icon>
+                        {{ apt.purpose }}
+                      </div>
+                      <div class="detail">
+                        <mat-icon>schedule</mat-icon>
+                        {{ apt.scheduledAt | date:'medium' }}
+                      </div>
+                    </div>
+                  </mat-card-content>
+                </mat-card>
+              }
+            </div>
+          } @else {
+            <div class="empty-state">
+              <mat-icon>event_busy</mat-icon>
+              <p>No appointments found.</p>
+            </div>
+          }
+        </div>
+      </mat-tab>
+    </mat-tab-group>
+  }
+</div>

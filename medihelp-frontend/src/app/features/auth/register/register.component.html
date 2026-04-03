@@ -1,0 +1,122 @@
+<div class="register-container">
+  <mat-card class="register-card">
+    <mat-card-header>
+      <mat-card-title>
+        <mat-icon class="header-icon">local_hospital</mat-icon>
+        @if (step === 'register') {
+          Create Account
+        } @else {
+          Verify Email
+        }
+      </mat-card-title>
+      <mat-card-subtitle>
+        @if (step === 'register') {
+          Join MediHelp to manage your health
+        } @else {
+          Enter the 6-digit code sent to {{ registeredEmail }}
+        }
+      </mat-card-subtitle>
+    </mat-card-header>
+
+    <mat-card-content>
+      @if (step === 'register') {
+        <form [formGroup]="registerForm" (ngSubmit)="onRegister()">
+          <div class="form-row">
+            <mat-form-field appearance="outline">
+              <mat-label>First Name</mat-label>
+              <input matInput formControlName="firstName">
+              @if (registerForm.get('firstName')?.hasError('required') && registerForm.get('firstName')?.touched) {
+                <mat-error>First name is required</mat-error>
+              }
+            </mat-form-field>
+
+            <mat-form-field appearance="outline">
+              <mat-label>Last Name</mat-label>
+              <input matInput formControlName="lastName">
+            </mat-form-field>
+          </div>
+
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>Email</mat-label>
+            <input matInput formControlName="email" type="email">
+            <mat-icon matSuffix>email</mat-icon>
+            @if (registerForm.get('email')?.hasError('required') && registerForm.get('email')?.touched) {
+              <mat-error>Email is required</mat-error>
+            }
+            @if (registerForm.get('email')?.hasError('email') && registerForm.get('email')?.touched) {
+              <mat-error>Enter a valid email</mat-error>
+            }
+          </mat-form-field>
+
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>Phone</mat-label>
+            <input matInput formControlName="phone" type="tel">
+            <mat-icon matSuffix>phone</mat-icon>
+          </mat-form-field>
+
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>Password</mat-label>
+            <input matInput formControlName="password"
+                   [type]="hidePassword ? 'password' : 'text'">
+            <button mat-icon-button matSuffix type="button"
+                    (click)="hidePassword = !hidePassword">
+              <mat-icon>{{ hidePassword ? 'visibility_off' : 'visibility' }}</mat-icon>
+            </button>
+            @if (registerForm.get('password')?.hasError('required') && registerForm.get('password')?.touched) {
+              <mat-error>Password is required</mat-error>
+            }
+            @if (registerForm.get('password')?.hasError('minlength') && registerForm.get('password')?.touched) {
+              <mat-error>Password must be at least 6 characters</mat-error>
+            }
+          </mat-form-field>
+
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>Confirm Password</mat-label>
+            <input matInput formControlName="confirmPassword" type="password">
+            @if (registerForm.get('confirmPassword')?.hasError('required') && registerForm.get('confirmPassword')?.touched) {
+              <mat-error>Please confirm your password</mat-error>
+            }
+          </mat-form-field>
+
+          <button mat-raised-button color="primary" type="submit"
+                  class="full-width submit-btn"
+                  [disabled]="registerForm.invalid || loading">
+            @if (loading) {
+              <mat-spinner diameter="20"></mat-spinner>
+            } @else {
+              Register
+            }
+          </button>
+        </form>
+      } @else {
+        <form [formGroup]="otpForm" (ngSubmit)="onVerifyOtp()">
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>OTP Code</mat-label>
+            <input matInput formControlName="otp" maxlength="6" placeholder="000000">
+            <mat-icon matSuffix>lock</mat-icon>
+            @if (otpForm.get('otp')?.hasError('required') && otpForm.get('otp')?.touched) {
+              <mat-error>OTP is required</mat-error>
+            }
+          </mat-form-field>
+
+          <button mat-raised-button color="primary" type="submit"
+                  class="full-width submit-btn"
+                  [disabled]="otpForm.invalid || loading">
+            @if (loading) {
+              <mat-spinner diameter="20"></mat-spinner>
+            } @else {
+              Verify OTP
+            }
+          </button>
+        </form>
+      }
+    </mat-card-content>
+
+    <mat-card-actions align="end">
+      <span class="login-link">
+        Already have an account?
+        <a routerLink="/login" mat-button color="accent">Login</a>
+      </span>
+    </mat-card-actions>
+  </mat-card>
+</div>

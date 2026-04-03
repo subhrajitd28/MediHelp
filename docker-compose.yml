@@ -1,0 +1,280 @@
+version: '3.8'
+
+# Full stack - all infrastructure + all services
+# Usage: docker compose up --build
+
+services:
+  # =============== INFRASTRUCTURE ===============
+
+  postgres-auth:
+    image: postgres:16-alpine
+    container_name: medihelp-postgres-auth
+    environment:
+      POSTGRES_DB: medihelp_auth
+      POSTGRES_USER: auth_user
+      POSTGRES_PASSWORD: localdev
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres-auth-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U auth_user -d medihelp_auth"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres-user:
+    image: postgres:16-alpine
+    container_name: medihelp-postgres-user
+    environment:
+      POSTGRES_DB: medihelp_user
+      POSTGRES_USER: user_user
+      POSTGRES_PASSWORD: localdev
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres-user-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user_user -d medihelp_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres-health:
+    image: postgres:16-alpine
+    container_name: medihelp-postgres-health
+    environment:
+      POSTGRES_DB: medihelp_health
+      POSTGRES_USER: health_user
+      POSTGRES_PASSWORD: localdev
+    ports:
+      - "5435:5432"
+    volumes:
+      - postgres-health-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U health_user -d medihelp_health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres-prescription:
+    image: postgres:16-alpine
+    container_name: medihelp-postgres-prescription
+    environment:
+      POSTGRES_DB: medihelp_prescription
+      POSTGRES_USER: prescription_user
+      POSTGRES_PASSWORD: localdev
+    ports:
+      - "5436:5432"
+    volumes:
+      - postgres-prescription-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U prescription_user -d medihelp_prescription"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres-notification:
+    image: postgres:16-alpine
+    container_name: medihelp-postgres-notification
+    environment:
+      POSTGRES_DB: medihelp_notification
+      POSTGRES_USER: notification_user
+      POSTGRES_PASSWORD: localdev
+    ports:
+      - "5437:5432"
+    volumes:
+      - postgres-notification-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U notification_user -d medihelp_notification"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mongodb:
+    image: mongo:7
+    container_name: medihelp-mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb-data:/data/db
+
+  redis:
+    image: redis:7-alpine
+    container_name: medihelp-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: medihelp-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # =============== SERVICES ===============
+
+  eureka-server:
+    build: ./medihelp-eureka
+    container_name: medihelp-eureka
+    ports:
+      - "8761:8761"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8761/actuator/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  api-gateway:
+    build: ./medihelp-gateway
+    container_name: medihelp-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      EUREKA_URL: http://eureka-server:8761/eureka/
+      REDIS_HOST: redis
+      JWT_SECRET: medihelp-super-secret-key-that-is-at-least-256-bits-long-for-hmac
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  auth-service:
+    build: ./medihelp-auth-service
+    container_name: medihelp-auth-service
+    ports:
+      - "8081:8081"
+    environment:
+      DB_URL: jdbc:postgresql://postgres-auth:5432/medihelp_auth
+      DB_USER: auth_user
+      DB_PASSWORD: localdev
+      REDIS_HOST: redis
+      RABBITMQ_HOST: rabbitmq
+      EUREKA_URL: http://eureka-server:8761/eureka/
+      JWT_SECRET: medihelp-super-secret-key-that-is-at-least-256-bits-long-for-hmac
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+      postgres-auth:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
+
+  user-service:
+    build: ./medihelp-user-service
+    container_name: medihelp-user-service
+    ports:
+      - "8082:8082"
+    environment:
+      DB_URL: jdbc:postgresql://postgres-user:5432/medihelp_user
+      DB_USER: user_user
+      DB_PASSWORD: localdev
+      REDIS_HOST: redis
+      RABBITMQ_HOST: rabbitmq
+      EUREKA_URL: http://eureka-server:8761/eureka/
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+      postgres-user:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  health-service:
+    build: ./medihelp-health-service
+    container_name: medihelp-health-service
+    ports:
+      - "8083:8083"
+    environment:
+      DB_URL: jdbc:postgresql://postgres-health:5432/medihelp_health
+      DB_USER: health_user
+      DB_PASSWORD: localdev
+      MONGODB_URI: mongodb://mongodb:27017/medihelp_health
+      REDIS_HOST: redis
+      RABBITMQ_HOST: rabbitmq
+      EUREKA_URL: http://eureka-server:8761/eureka/
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+      postgres-health:
+        condition: service_healthy
+      mongodb:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
+
+  prescription-service:
+    build: ./medihelp-prescription-service
+    container_name: medihelp-prescription-service
+    ports:
+      - "8084:8084"
+    environment:
+      DB_URL: jdbc:postgresql://postgres-prescription:5432/medihelp_prescription
+      DB_USER: prescription_user
+      DB_PASSWORD: localdev
+      REDIS_HOST: redis
+      RABBITMQ_HOST: rabbitmq
+      EUREKA_URL: http://eureka-server:8761/eureka/
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+      postgres-prescription:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  notification-service:
+    build: ./medihelp-notification-service
+    container_name: medihelp-notification-service
+    ports:
+      - "8085:8085"
+    environment:
+      DB_URL: jdbc:postgresql://postgres-notification:5432/medihelp_notification
+      DB_USER: notification_user
+      DB_PASSWORD: localdev
+      RABBITMQ_HOST: rabbitmq
+      EUREKA_URL: http://eureka-server:8761/eureka/
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+      postgres-notification:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  ai-service:
+    build: ./medihelp-ai-service
+    container_name: medihelp-ai-service
+    ports:
+      - "8000:8000"
+    environment:
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      EUREKA_URL: http://eureka-server:8761/eureka/
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+
+volumes:
+  postgres-auth-data:
+  postgres-user-data:
+  postgres-health-data:
+  postgres-prescription-data:
+  postgres-notification-data:
+  mongodb-data:
+  redis-data:
+  rabbitmq-data:

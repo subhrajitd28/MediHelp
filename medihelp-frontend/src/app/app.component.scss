@@ -1,0 +1,18 @@
+.app-container {
+  position: absolute;
+  top: 64px;
+  bottom: 0;
+  left: 0;
+  right: 0;
+}
+
+.app-sidenav {
+  width: 240px;
+  padding-top: 16px;
+}
+
+.app-content {
+  padding: 0;
+  background-color: #fafafa;
+  min-height: 100%;
+}

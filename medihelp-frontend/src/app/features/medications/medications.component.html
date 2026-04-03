@@ -1,0 +1,155 @@
+<div class="medications-container">
+  <h1 class="page-title">Medications</h1>
+
+  @if (loading) {
+    <div class="loading-container">
+      <mat-spinner></mat-spinner>
+    </div>
+  } @else {
+    <div class="medications-grid">
+      <!-- Adherence Card -->
+      <mat-card class="adherence-card">
+        <mat-card-header>
+          <mat-card-title>
+            <mat-icon>pie_chart</mat-icon>
+            Medication Adherence
+          </mat-card-title>
+        </mat-card-header>
+        <mat-card-content>
+          @if (adherence) {
+            <div class="adherence-circle">
+              <mat-progress-spinner
+                mode="determinate"
+                [value]="adherence.adherencePercentage"
+                diameter="120"
+                color="primary">
+              </mat-progress-spinner>
+              <span class="adherence-text">{{ adherence.adherencePercentage | number:'1.0-0' }}%</span>
+            </div>
+            <div class="adherence-stats">
+              <div class="stat taken">
+                <span class="label">Taken</span>
+                <span class="value">{{ adherence.totalTaken }}</span>
+              </div>
+              <div class="stat missed">
+                <span class="label">Missed</span>
+                <span class="value">{{ adherence.totalMissed }}</span>
+              </div>
+              <div class="stat skipped">
+                <span class="label">Skipped</span>
+                <span class="value">{{ adherence.totalSkipped }}</span>
+              </div>
+            </div>
+          } @else {
+            <div class="empty-state">
+              <mat-icon>info</mat-icon>
+              <p>No adherence data yet.</p>
+            </div>
+          }
+        </mat-card-content>
+      </mat-card>
+
+      <!-- Active Medications -->
+      <mat-card class="meds-list-card">
+        <mat-card-header>
+          <mat-card-title>
+            <mat-icon>medication</mat-icon>
+            Active Medications
+          </mat-card-title>
+          <span class="spacer"></span>
+          <button mat-raised-button color="primary" (click)="showAddForm = !showAddForm">
+            <mat-icon>add</mat-icon>
+            {{ showAddForm ? 'Cancel' : 'Add Medication' }}
+          </button>
+        </mat-card-header>
+        <mat-card-content>
+          @if (showAddForm) {
+            <div class="add-form-container">
+              <form [formGroup]="addForm" (ngSubmit)="onAddMedication()">
+                <div class="form-row">
+                  <mat-form-field appearance="outline">
+                    <mat-label>Drug Name</mat-label>
+                    <input matInput formControlName="drugName">
+                  </mat-form-field>
+                  <mat-form-field appearance="outline">
+                    <mat-label>Dosage</mat-label>
+                    <input matInput formControlName="dosage" placeholder="e.g. 500mg">
+                  </mat-form-field>
+                </div>
+                <div class="form-row">
+                  <mat-form-field appearance="outline">
+                    <mat-label>Frequency</mat-label>
+                    <mat-select formControlName="frequency">
+                      @for (freq of frequencies; track freq.value) {
+                        <mat-option [value]="freq.value">{{ freq.label }}</mat-option>
+                      }
+                    </mat-select>
+                  </mat-form-field>
+                  <mat-form-field appearance="outline">
+                    <mat-label>Start Date</mat-label>
+                    <input matInput [matDatepicker]="startPicker" formControlName="startDate">
+                    <mat-datepicker-toggle matSuffix [for]="startPicker"></mat-datepicker-toggle>
+                    <mat-datepicker #startPicker></mat-datepicker>
+                  </mat-form-field>
+                </div>
+                <div class="form-row">
+                  <mat-slide-toggle formControlName="withFood">Take with food</mat-slide-toggle>
+                </div>
+                <mat-form-field appearance="outline" class="full-width">
+                  <mat-label>Instructions (optional)</mat-label>
+                  <input matInput formControlName="instructions">
+                </mat-form-field>
+                <button mat-raised-button color="accent" type="submit"
+                        [disabled]="addForm.invalid || saving">
+                  @if (saving) {
+                    <mat-spinner diameter="20"></mat-spinner>
+                  } @else {
+                    Add Medication
+                  }
+                </button>
+              </form>
+            </div>
+          }
+
+          @if (medications.length > 0) {
+            <div class="medications-list">
+              @for (med of medications; track med.id) {
+                <div class="med-item">
+                  <div class="med-info">
+                    <div class="med-name">{{ med.drugName }}</div>
+                    <div class="med-details">
+                      {{ med.dosage }} - {{ getFrequencyLabel(med.frequency) }}
+                      @if (med.withFood) {
+                        <mat-chip class="food-chip">With Food</mat-chip>
+                      }
+                    </div>
+                    @if (med.instructions) {
+                      <div class="med-instructions">{{ med.instructions }}</div>
+                    }
+                  </div>
+                  <div class="med-actions">
+                    <button mat-raised-button color="primary"
+                            (click)="logMedication(med.id, 'TAKEN')">
+                      <mat-icon>check</mat-icon>
+                      Take
+                    </button>
+                    <button mat-stroked-button color="warn"
+                            (click)="logMedication(med.id, 'SKIPPED')">
+                      <mat-icon>skip_next</mat-icon>
+                      Skip
+                    </button>
+                  </div>
+                </div>
+              }
+            </div>
+          } @else {
+            <div class="empty-state">
+              <mat-icon>medication</mat-icon>
+              <p>No active medications. Add one to get started!</p>
+            </div>
+          }
+        </mat-card-content>
+      </mat-card>
+    </div>
+  }
+</div>

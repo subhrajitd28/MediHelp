@@ -1,0 +1,55 @@
+server:
+  port: 8085
+
+spring:
+  application:
+    name: notification-service
+
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5437/medihelp_notification}
+    username: ${DB_USER:notification_user}
+    password: ${DB_PASSWORD:localdev}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:guest}
+    password: ${RABBITMQ_PASS:guest}
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka/}
+  instance:
+    prefer-ip-address: true
+
+# External service integrations
+resend:
+  api-key: ${RESEND_API_KEY:your-resend-api-key}
+
+firebase:
+  credentials-path: ${FIREBASE_CREDENTIALS:}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, metrics, prometheus
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html

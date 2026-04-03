@@ -1,0 +1,45 @@
+# ---- Java / Maven ----
+target/
+*.class
+*.jar
+*.war
+*.ear
+.mvn/wrapper/maven-wrapper.jar
+
+# ---- IDE ----
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+.project
+.classpath
+.settings/
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+.env
+
+# ---- Node / Angular ----
+node_modules/
+dist/
+.angular/
+.cache/
+
+# ---- OS ----
+.DS_Store
+Thumbs.db
+
+# ---- Docker ----
+.docker/
+
+# ---- Secrets ----
+*.env
+.env.*
+credentials.json
+serviceAccountKey.json

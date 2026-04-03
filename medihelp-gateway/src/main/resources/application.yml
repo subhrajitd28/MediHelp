@@ -1,0 +1,80 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: api-gateway
+  cloud:
+    gateway:
+      default-filters:
+        - DedupeResponseHeader=Access-Control-Allow-Credentials Access-Control-Allow-Origin
+      routes:
+        # Auth Service
+        - id: auth-service
+          uri: lb://auth-service
+          predicates:
+            - Path=/api/v1/auth/**
+
+        # User & Profile Service
+        - id: user-service
+          uri: lb://user-service
+          predicates:
+            - Path=/api/v1/users/**
+
+        # Health Tracking Service
+        - id: health-service
+          uri: lb://health-service
+          predicates:
+            - Path=/api/v1/health/**
+
+        # Prescription & Medication Service
+        - id: prescription-service
+          uri: lb://prescription-service
+          predicates:
+            - Path=/api/v1/prescriptions/**
+
+        # AI Recommendation Service
+        - id: ai-service
+          uri: lb://ai-service
+          predicates:
+            - Path=/api/v1/ai/**
+
+        # Notification Service
+        - id: notification-service
+          uri: lb://notification-service
+          predicates:
+            - Path=/api/v1/notifications/**
+
+        # Public endpoints (served by user-service)
+        - id: public
+          uri: lb://user-service
+          predicates:
+            - Path=/api/v1/public/**
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+jwt:
+  secret: ${JWT_SECRET:medihelp-super-secret-key-that-is-at-least-256-bits-long-for-hmac}
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka/}
+  instance:
+    prefer-ip-address: true
+
+app:
+  cors:
+    allowed-origins: ${CORS_ORIGINS:http://localhost:4200}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, metrics, prometheus
+  metrics:
+    tags:
+      application: ${spring.application.name}

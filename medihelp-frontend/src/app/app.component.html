@@ -1,0 +1,13 @@
+@if (isAuthenticated) {
+  <app-navbar (toggleSidenav)="toggleSidenav()"></app-navbar>
+  <mat-sidenav-container class="app-container">
+    <mat-sidenav #sidenav mode="side" opened class="app-sidenav">
+      <app-sidebar></app-sidebar>
+    </mat-sidenav>
+    <mat-sidenav-content class="app-content">
+      <router-outlet></router-outlet>
+    </mat-sidenav-content>
+  </mat-sidenav-container>
+} @else {
+  <router-outlet></router-outlet>
+}

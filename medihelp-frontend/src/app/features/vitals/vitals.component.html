@@ -1,0 +1,161 @@
+<div class="vitals-container">
+  <h1 class="page-title">Vitals</h1>
+
+  <!-- Record Vital Form -->
+  <mat-card class="form-card">
+    <mat-card-header>
+      <mat-card-title>
+        <mat-icon>add_circle</mat-icon>
+        Record a Vital
+      </mat-card-title>
+    </mat-card-header>
+    <mat-card-content>
+      <form [formGroup]="vitalForm" (ngSubmit)="onRecordVital()" class="vital-form">
+        <mat-form-field appearance="outline">
+          <mat-label>Vital Type</mat-label>
+          <mat-select formControlName="type">
+            @for (vt of vitalTypes; track vt.value) {
+              <mat-option [value]="vt.value">{{ vt.label }}</mat-option>
+            }
+          </mat-select>
+        </mat-form-field>
+
+        <mat-form-field appearance="outline">
+          <mat-label>Value</mat-label>
+          <input matInput formControlName="value" type="number">
+        </mat-form-field>
+
+        <mat-form-field appearance="outline">
+          <mat-label>Unit</mat-label>
+          <input matInput formControlName="unit" readonly>
+        </mat-form-field>
+
+        <mat-form-field appearance="outline" class="notes-field">
+          <mat-label>Notes (optional)</mat-label>
+          <input matInput formControlName="notes">
+        </mat-form-field>
+
+        <button mat-raised-button color="primary" type="submit"
+                [disabled]="vitalForm.invalid || saving">
+          @if (saving) {
+            <mat-spinner diameter="20"></mat-spinner>
+          } @else {
+            Record
+          }
+        </button>
+      </form>
+    </mat-card-content>
+  </mat-card>
+
+  <!-- Trends -->
+  <mat-card class="trends-card">
+    <mat-card-header>
+      <mat-card-title>
+        <mat-icon>trending_up</mat-icon>
+        Vital Trends
+      </mat-card-title>
+    </mat-card-header>
+    <mat-card-content>
+      <div class="trend-controls">
+        <mat-form-field appearance="outline">
+          <mat-label>Vital Type</mat-label>
+          <mat-select [value]="selectedTrendType" (selectionChange)="onTrendTypeChange($event.value)">
+            @for (vt of vitalTypes; track vt.value) {
+              <mat-option [value]="vt.value">{{ vt.label }}</mat-option>
+            }
+          </mat-select>
+        </mat-form-field>
+
+        <div class="period-chips">
+          <mat-chip-set>
+            <mat-chip [highlighted]="selectedPeriod === 7" (click)="onPeriodChange(7)">7 Days</mat-chip>
+            <mat-chip [highlighted]="selectedPeriod === 14" (click)="onPeriodChange(14)">14 Days</mat-chip>
+            <mat-chip [highlighted]="selectedPeriod === 30" (click)="onPeriodChange(30)">30 Days</mat-chip>
+          </mat-chip-set>
+        </div>
+      </div>
+
+      @if (trend) {
+        <div class="trend-stats">
+          <div class="stat">
+            <span class="stat-label">Average</span>
+            <span class="stat-value">{{ trend.averageValue | number:'1.1-1' }}</span>
+          </div>
+          <div class="stat">
+            <span class="stat-label">Minimum</span>
+            <span class="stat-value">{{ trend.minValue | number:'1.1-1' }}</span>
+          </div>
+          <div class="stat">
+            <span class="stat-label">Maximum</span>
+            <span class="stat-value">{{ trend.maxValue | number:'1.1-1' }}</span>
+          </div>
+          <div class="stat">
+            <span class="stat-label">Data Points</span>
+            <span class="stat-value">{{ trend.dataPoints.length }}</span>
+          </div>
+        </div>
+      } @else {
+        <div class="empty-state">
+          <mat-icon>info</mat-icon>
+          <p>No trend data available for this period.</p>
+        </div>
+      }
+    </mat-card-content>
+  </mat-card>
+
+  <!-- Recent Vitals Table -->
+  <mat-card class="table-card">
+    <mat-card-header>
+      <mat-card-title>
+        <mat-icon>list</mat-icon>
+        Recent Vitals
+      </mat-card-title>
+    </mat-card-header>
+    <mat-card-content>
+      @if (loading) {
+        <div class="loading-container">
+          <mat-spinner diameter="40"></mat-spinner>
+        </div>
+      } @else {
+        <table mat-table [dataSource]="vitals" class="vitals-table">
+          <ng-container matColumnDef="type">
+            <th mat-header-cell *matHeaderCellDef>Type</th>
+            <td mat-cell *matCellDef="let v">{{ getTypeLabel(v.type) }}</td>
+          </ng-container>
+
+          <ng-container matColumnDef="value">
+            <th mat-header-cell *matHeaderCellDef>Value</th>
+            <td mat-cell *matCellDef="let v">{{ v.value }}</td>
+          </ng-container>
+
+          <ng-container matColumnDef="unit">
+            <th mat-header-cell *matHeaderCellDef>Unit</th>
+            <td mat-cell *matCellDef="let v">{{ v.unit }}</td>
+          </ng-container>
+
+          <ng-container matColumnDef="notes">
+            <th mat-header-cell *matHeaderCellDef>Notes</th>
+            <td mat-cell *matCellDef="let v">{{ v.notes || '-' }}</td>
+          </ng-container>
+
+          <ng-container matColumnDef="recordedAt">
+            <th mat-header-cell *matHeaderCellDef>Recorded At</th>
+            <td mat-cell *matCellDef="let v">{{ v.recordedAt | date:'medium' }}</td>
+          </ng-container>
+
+          <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+          <tr mat-row *matRowDef="let row; columns: displayedColumns;"></tr>
+        </table>
+
+        <mat-paginator
+          [length]="totalElements"
+          [pageSize]="pageSize"
+          [pageIndex]="pageIndex"
+          [pageSizeOptions]="[5, 10, 20]"
+          (page)="onPageChange($event)"
+          showFirstLastButtons>
+        </mat-paginator>
+      }
+    </mat-card-content>
+  </mat-card>
+</div>

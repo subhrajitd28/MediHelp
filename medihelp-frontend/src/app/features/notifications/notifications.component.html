@@ -1,0 +1,64 @@
+<div class="notifications-container">
+  <div class="page-header">
+    <h1 class="page-title">Notifications</h1>
+    <button mat-raised-button color="primary" (click)="markAllAsRead()"
+            [disabled]="notifications.length === 0">
+      <mat-icon>done_all</mat-icon>
+      Mark All as Read
+    </button>
+  </div>
+
+  @if (loading) {
+    <div class="loading-container">
+      <mat-spinner></mat-spinner>
+    </div>
+  } @else {
+    @if (notifications.length > 0) {
+      <div class="notifications-list">
+        @for (notif of notifications; track notif.id) {
+          <mat-card class="notification-card"
+                    [class.unread]="!notif.read"
+                    (click)="markAsRead(notif)">
+            <mat-card-content>
+              <div class="notif-row">
+                <mat-icon class="notif-icon"
+                          [style.color]="getCategoryColor(notif.category)">
+                  {{ getCategoryIcon(notif.category) }}
+                </mat-icon>
+                <div class="notif-content">
+                  <div class="notif-header">
+                    <span class="notif-title">{{ notif.title }}</span>
+                    <mat-chip class="category-chip"
+                              [style.background-color]="getCategoryColor(notif.category)"
+                              style="color: white; font-size: 11px;">
+                      {{ notif.category | titlecase }}
+                    </mat-chip>
+                  </div>
+                  <p class="notif-message">{{ notif.message }}</p>
+                  <span class="notif-time">{{ notif.createdAt | date:'medium' }}</span>
+                </div>
+                @if (!notif.read) {
+                  <div class="unread-dot"></div>
+                }
+              </div>
+            </mat-card-content>
+          </mat-card>
+        }
+      </div>
+
+      <mat-paginator
+        [length]="totalElements"
+        [pageSize]="pageSize"
+        [pageIndex]="pageIndex"
+        [pageSizeOptions]="[10, 20, 50]"
+        (page)="onPageChange($event)"
+        showFirstLastButtons>
+      </mat-paginator>
+    } @else {
+      <div class="empty-state">
+        <mat-icon>notifications_none</mat-icon>
+        <p>No notifications yet.</p>
+      </div>
+    }
+  }
+</div>

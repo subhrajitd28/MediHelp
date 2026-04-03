@@ -1,0 +1,181 @@
+version: '3.8'
+
+# Production deployment - uses GHCR images + external databases
+# Usage: docker compose -f docker-compose.prod.yml up -d
+
+services:
+  # =============== INFRASTRUCTURE (local on VM) ===============
+
+  redis:
+    image: redis:7-alpine
+    container_name: medihelp-redis
+    restart: always
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: medihelp-rabbitmq
+    restart: always
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-medihelp}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS:-medihelp123}
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  # =============== SERVICES ===============
+
+  eureka-server:
+    image: ${IMAGE_PREFIX:-ghcr.io/medihelp}/medihelp-eureka:latest
+    container_name: medihelp-eureka
+    restart: always
+    ports:
+      - "8761:8761"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8761/actuator/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  api-gateway:
+    image: ${IMAGE_PREFIX:-ghcr.io/medihelp}/medihelp-gateway:latest
+    container_name: medihelp-gateway
+    restart: always
+    ports:
+      - "8080:8080"
+    environment:
+      EUREKA_URL: http://eureka-server:8761/eureka/
+      JWT_SECRET: ${JWT_SECRET}
+      REDIS_HOST: redis
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost}
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+
+  auth-service:
+    image: ${IMAGE_PREFIX:-ghcr.io/medihelp}/medihelp-auth-service:latest
+    container_name: medihelp-auth-service
+    restart: always
+    environment:
+      DB_URL: ${AUTH_DB_URL}
+      DB_USER: ${AUTH_DB_USER}
+      DB_PASSWORD: ${AUTH_DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      REDIS_HOST: redis
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: ${RABBITMQ_USER:-medihelp}
+      RABBITMQ_PASS: ${RABBITMQ_PASS:-medihelp123}
+      EUREKA_URL: http://eureka-server:8761/eureka/
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  user-service:
+    image: ${IMAGE_PREFIX:-ghcr.io/medihelp}/medihelp-user-service:latest
+    container_name: medihelp-user-service
+    restart: always
+    environment:
+      DB_URL: ${USER_DB_URL}
+      DB_USER: ${USER_DB_USER}
+      DB_PASSWORD: ${USER_DB_PASSWORD}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: ${RABBITMQ_USER:-medihelp}
+      RABBITMQ_PASS: ${RABBITMQ_PASS:-medihelp123}
+      EUREKA_URL: http://eureka-server:8761/eureka/
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  health-service:
+    image: ${IMAGE_PREFIX:-ghcr.io/medihelp}/medihelp-health-service:latest
+    container_name: medihelp-health-service
+    restart: always
+    environment:
+      DB_URL: ${HEALTH_DB_URL}
+      DB_USER: ${HEALTH_DB_USER}
+      DB_PASSWORD: ${HEALTH_DB_PASSWORD}
+      MONGODB_URI: ${MONGODB_URI}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: ${RABBITMQ_USER:-medihelp}
+      RABBITMQ_PASS: ${RABBITMQ_PASS:-medihelp123}
+      EUREKA_URL: http://eureka-server:8761/eureka/
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  prescription-service:
+    image: ${IMAGE_PREFIX:-ghcr.io/medihelp}/medihelp-prescription-service:latest
+    container_name: medihelp-prescription-service
+    restart: always
+    environment:
+      DB_URL: ${PRESCRIPTION_DB_URL}
+      DB_USER: ${PRESCRIPTION_DB_USER}
+      DB_PASSWORD: ${PRESCRIPTION_DB_PASSWORD}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: ${RABBITMQ_USER:-medihelp}
+      RABBITMQ_PASS: ${RABBITMQ_PASS:-medihelp123}
+      EUREKA_URL: http://eureka-server:8761/eureka/
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  notification-service:
+    image: ${IMAGE_PREFIX:-ghcr.io/medihelp}/medihelp-notification-service:latest
+    container_name: medihelp-notification-service
+    restart: always
+    environment:
+      DB_URL: ${NOTIFICATION_DB_URL}
+      DB_USER: ${NOTIFICATION_DB_USER}
+      DB_PASSWORD: ${NOTIFICATION_DB_PASSWORD}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: ${RABBITMQ_USER:-medihelp}
+      RABBITMQ_PASS: ${RABBITMQ_PASS:-medihelp123}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EUREKA_URL: http://eureka-server:8761/eureka/
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  ai-service:
+    image: ${IMAGE_PREFIX:-ghcr.io/medihelp}/medihelp-ai-service:latest
+    container_name: medihelp-ai-service
+    restart: always
+    environment:
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      EUREKA_URL: http://eureka-server:8761/eureka/
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+
+  frontend:
+    image: ${IMAGE_PREFIX:-ghcr.io/medihelp}/medihelp-frontend:latest
+    container_name: medihelp-frontend
+    restart: always
+    ports:
+      - "80:80"
+
+volumes:
+  redis-data:
+  rabbitmq-data:

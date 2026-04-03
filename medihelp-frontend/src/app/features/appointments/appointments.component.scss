@@ -1,0 +1,120 @@
+.appointments-container {
+  padding: 24px;
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.page-title {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 500;
+  color: #333;
+}
+
+.loading-container {
+  display: flex;
+  justify-content: center;
+  padding: 64px;
+}
+
+// Add form
+.add-form-card {
+  margin-bottom: 24px;
+
+  mat-card-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 18px;
+  }
+}
+
+.form-row {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+
+  mat-form-field {
+    flex: 1;
+    min-width: 200px;
+  }
+}
+
+.full-width {
+  width: 100%;
+}
+
+// Tab content
+.tab-content {
+  padding: 24px 0;
+}
+
+.appointments-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.appointment-card {
+  border-left: 4px solid #3f51b5;
+
+  .apt-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+
+  .apt-doctor {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 18px;
+    font-weight: 600;
+  }
+
+  .apt-details {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .detail {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #666;
+    font-size: 14px;
+
+    mat-icon {
+      font-size: 18px;
+      width: 18px;
+      height: 18px;
+      color: #999;
+    }
+
+    &.notes {
+      font-style: italic;
+    }
+  }
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 48px;
+  color: #999;
+
+  mat-icon {
+    font-size: 48px;
+    width: 48px;
+    height: 48px;
+    margin-bottom: 8px;
+  }
+}

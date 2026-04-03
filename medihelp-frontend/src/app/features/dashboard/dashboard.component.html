@@ -1,0 +1,170 @@
+<div class="dashboard-container">
+  <h1 class="page-title">Dashboard</h1>
+
+  @if (loading) {
+    <div class="loading-container">
+      <mat-spinner></mat-spinner>
+    </div>
+  } @else {
+    <div class="dashboard-grid">
+      <!-- Health Score Card -->
+      <mat-card class="health-score-card">
+        <mat-card-header>
+          <mat-card-title>
+            <mat-icon>assessment</mat-icon>
+            Health Score
+          </mat-card-title>
+        </mat-card-header>
+        <mat-card-content>
+          @if (healthScore) {
+            <div class="score-circle">
+              <span class="score-value">{{ healthScore.totalScore }}</span>
+              <span class="score-max">/ 100</span>
+            </div>
+            <div class="sub-scores">
+              <div class="sub-score">
+                <span class="label">Vitals</span>
+                <span class="value">{{ healthScore.vitalScore }}</span>
+              </div>
+              <div class="sub-score">
+                <span class="label">Activity</span>
+                <span class="value">{{ healthScore.activityScore }}</span>
+              </div>
+              <div class="sub-score">
+                <span class="label">Sleep</span>
+                <span class="value">{{ healthScore.sleepScore }}</span>
+              </div>
+              <div class="sub-score">
+                <span class="label">Mental</span>
+                <span class="value">{{ healthScore.mentalHealthScore }}</span>
+              </div>
+            </div>
+          } @else {
+            <div class="empty-state">
+              <mat-icon>info</mat-icon>
+              <p>No health score yet. Start logging your vitals!</p>
+            </div>
+          }
+        </mat-card-content>
+      </mat-card>
+
+      <!-- Latest Vitals Cards -->
+      <mat-card class="vitals-card">
+        <mat-card-header>
+          <mat-card-title>
+            <mat-icon>monitor_heart</mat-icon>
+            Latest Vitals
+          </mat-card-title>
+        </mat-card-header>
+        <mat-card-content>
+          @if (getVitalKeys().length > 0) {
+            <div class="vitals-grid">
+              @for (key of getVitalKeys(); track key) {
+                <div class="vital-item">
+                  <mat-icon class="vital-icon">{{ vitalIcons[key] || 'favorite' }}</mat-icon>
+                  <div class="vital-info">
+                    <span class="vital-label">{{ vitalLabels[key] || key }}</span>
+                    <span class="vital-value">{{ latestVitals[key].value }} {{ latestVitals[key].unit }}</span>
+                  </div>
+                </div>
+              }
+            </div>
+          } @else {
+            <div class="empty-state">
+              <mat-icon>info</mat-icon>
+              <p>No vitals recorded yet.</p>
+            </div>
+          }
+        </mat-card-content>
+      </mat-card>
+
+      <!-- Streaks Card -->
+      <mat-card class="streaks-card">
+        <mat-card-header>
+          <mat-card-title>
+            <mat-icon>local_fire_department</mat-icon>
+            Streaks
+          </mat-card-title>
+        </mat-card-header>
+        <mat-card-content>
+          @if (streaks.length > 0) {
+            <div class="streaks-list">
+              @for (streak of streaks; track streak.id) {
+                <div class="streak-item">
+                  <mat-icon class="streak-icon">{{ getStreakIcon(streak.streakType) }}</mat-icon>
+                  <div class="streak-info">
+                    <span class="streak-type">{{ streak.streakType | titlecase }}</span>
+                    <span class="streak-count">
+                      <mat-icon class="fire-icon">local_fire_department</mat-icon>
+                      {{ streak.currentStreak }} days
+                    </span>
+                  </div>
+                  <span class="streak-best">Best: {{ streak.longestStreak }}</span>
+                </div>
+              }
+            </div>
+          } @else {
+            <div class="empty-state">
+              <mat-icon>info</mat-icon>
+              <p>Start building your streaks!</p>
+            </div>
+          }
+        </mat-card-content>
+      </mat-card>
+
+      <!-- Upcoming Appointments Card -->
+      <mat-card class="appointments-card">
+        <mat-card-header>
+          <mat-card-title>
+            <mat-icon>calendar_month</mat-icon>
+            Upcoming Appointments
+          </mat-card-title>
+        </mat-card-header>
+        <mat-card-content>
+          @if (upcomingAppointments.length > 0) {
+            <mat-list>
+              @for (apt of upcomingAppointments; track apt.id) {
+                <mat-list-item class="appointment-item">
+                  <mat-icon matListItemIcon>event</mat-icon>
+                  <div matListItemTitle>Dr. {{ apt.doctorName }} - {{ apt.purpose }}</div>
+                  <div matListItemLine>{{ apt.hospital }} | {{ apt.scheduledAt | date:'medium' }}</div>
+                </mat-list-item>
+              }
+            </mat-list>
+          } @else {
+            <div class="empty-state">
+              <mat-icon>info</mat-icon>
+              <p>No upcoming appointments.</p>
+            </div>
+          }
+        </mat-card-content>
+      </mat-card>
+
+      <!-- Quick Actions Card -->
+      <mat-card class="quick-actions-card">
+        <mat-card-header>
+          <mat-card-title>
+            <mat-icon>bolt</mat-icon>
+            Quick Actions
+          </mat-card-title>
+        </mat-card-header>
+        <mat-card-content>
+          <div class="actions-grid">
+            <button mat-raised-button color="primary" routerLink="/vitals">
+              <mat-icon>monitor_heart</mat-icon>
+              Record Vital
+            </button>
+            <button mat-raised-button color="accent" routerLink="/medications">
+              <mat-icon>medication</mat-icon>
+              Log Medication
+            </button>
+            <button mat-raised-button color="warn" routerLink="/appointments">
+              <mat-icon>calendar_month</mat-icon>
+              Add Appointment
+            </button>
+          </div>
+        </mat-card-content>
+      </mat-card>
+    </div>
+  }
+</div>
