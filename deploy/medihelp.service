@@ -1,0 +1,17 @@
+[Unit]
+Description=MediHelp Microservices
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=forking
+User=azureuser
+WorkingDirectory=/home/azureuser/medihelp-src
+ExecStart=/bin/bash /home/azureuser/medihelp-src/deploy/scripts/start-all.sh /home/azureuser/medihelp-src
+ExecStop=/bin/bash /home/azureuser/medihelp-src/deploy/scripts/stop-all.sh
+RemainAfterExit=yes
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target
