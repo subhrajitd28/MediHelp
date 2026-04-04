@@ -27,13 +27,13 @@ export class AuthService {
 
   register(req: RegisterRequest): Observable<any> {
     return this.http.post<ApiResponse<any>>(`${this.apiUrl}/register`, req).pipe(
-      map(res => res.data)
+      map(res => res)
     );
   }
 
   verifyOtp(req: OtpVerifyRequest): Observable<any> {
     return this.http.post<ApiResponse<any>>(`${this.apiUrl}/verify-otp`, req).pipe(
-      map(res => res.data)
+      map(res => res)
     );
   }
 
