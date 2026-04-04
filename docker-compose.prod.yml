@@ -41,6 +41,8 @@ services:
     restart: always
     ports:
       - "8761:8761"
+    environment:
+      JAVA_OPTS: "-Xmx192m -Xms128m"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8761/actuator/health"]
       interval: 15s
@@ -54,6 +56,7 @@ services:
     ports:
       - "8080:8080"
     environment:
+      JAVA_OPTS: "-Xmx192m -Xms128m"
       EUREKA_URL: http://eureka-server:8761/eureka/
       JWT_SECRET: ${JWT_SECRET}
       REDIS_HOST: redis
@@ -67,6 +70,7 @@ services:
     container_name: medihelp-auth-service
     restart: always
     environment:
+      JAVA_OPTS: "-Xmx256m -Xms128m"
       DB_URL: ${AUTH_DB_URL}
       DB_USER: ${AUTH_DB_USER}
       DB_PASSWORD: ${AUTH_DB_PASSWORD}
@@ -89,6 +93,7 @@ services:
     container_name: medihelp-user-service
     restart: always
     environment:
+      JAVA_OPTS: "-Xmx256m -Xms128m"
       DB_URL: ${USER_DB_URL}
       DB_USER: ${USER_DB_USER}
       DB_PASSWORD: ${USER_DB_PASSWORD}
@@ -107,6 +112,7 @@ services:
     container_name: medihelp-health-service
     restart: always
     environment:
+      JAVA_OPTS: "-Xmx256m -Xms128m"
       DB_URL: ${HEALTH_DB_URL}
       DB_USER: ${HEALTH_DB_USER}
       DB_PASSWORD: ${HEALTH_DB_PASSWORD}
@@ -126,6 +132,7 @@ services:
     container_name: medihelp-prescription-service
     restart: always
     environment:
+      JAVA_OPTS: "-Xmx256m -Xms128m"
       DB_URL: ${PRESCRIPTION_DB_URL}
       DB_USER: ${PRESCRIPTION_DB_USER}
       DB_PASSWORD: ${PRESCRIPTION_DB_PASSWORD}
@@ -144,6 +151,7 @@ services:
     container_name: medihelp-notification-service
     restart: always
     environment:
+      JAVA_OPTS: "-Xmx256m -Xms128m"
       DB_URL: ${NOTIFICATION_DB_URL}
       DB_USER: ${NOTIFICATION_DB_USER}
       DB_PASSWORD: ${NOTIFICATION_DB_PASSWORD}

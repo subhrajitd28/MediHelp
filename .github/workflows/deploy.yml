@@ -1,4 +1,4 @@
-name: Deploy to Oracle Cloud
+name: Deploy to Cloud VM
 
 on:
   workflow_dispatch:  # Manual trigger only
@@ -58,14 +58,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Deploy to Oracle Cloud VM
+      - name: Deploy to VM via SSH
         uses: appleboy/ssh-action@v1
         with:
-          host: ${{ secrets.OCI_HOST }}
-          username: ${{ secrets.OCI_USER }}
-          key: ${{ secrets.OCI_SSH_KEY }}
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USER }}
+          key: ${{ secrets.VM_SSH_KEY }}
           script: |
             cd ~/medihelp
+            # Login to GHCR
+            echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            # Pull latest images
             docker compose pull
+            # Restart with zero downtime
             docker compose up -d --remove-orphans
+            # Cleanup old images
             docker system prune -f
+            # Show running containers
+            docker ps --format "table {{.Names}}\t{{.Status}}"
