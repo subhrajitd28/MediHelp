@@ -16,5 +16,7 @@ public class SosResponse {
     private String message;
     private int contactsNotified;
     private List<String> contactNames;
+    private String shareableLink;
+    private Instant expiresAt;
     private Instant triggeredAt;
 }

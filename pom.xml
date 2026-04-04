@@ -36,6 +36,7 @@
         <jjwt.version>0.12.6</jjwt.version>
         <springdoc.version>2.6.0</springdoc.version>
         <hapi-fhir.version>7.4.0</hapi-fhir.version>
+        <logstash-logback.version>7.4</logstash-logback.version>
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>

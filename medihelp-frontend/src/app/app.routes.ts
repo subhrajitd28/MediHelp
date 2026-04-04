@@ -2,7 +2,12 @@ import { Routes } from '@angular/router';
 import { authGuard } from './core/guards/auth.guard';
 
 export const routes: Routes = [
-  { path: '', redirectTo: '/dashboard', pathMatch: 'full' },
+  {
+    path: '',
+    loadComponent: () =>
+      import('./features/landing/landing.component').then(m => m.LandingComponent),
+    pathMatch: 'full'
+  },
   {
     path: 'login',
     loadComponent: () =>
@@ -49,5 +54,5 @@ export const routes: Routes = [
       import('./features/notifications/notifications.component').then(m => m.NotificationsComponent),
     canActivate: [authGuard]
   },
-  { path: '**', redirectTo: '/dashboard' }
+  { path: '**', redirectTo: '/' }
 ];

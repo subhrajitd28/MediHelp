@@ -1,5 +1,6 @@
 package com.medihelp.health.service;
 
+import com.medihelp.health.config.EncryptionConfig;
 import com.medihelp.health.document.MoodEntry;
 import com.medihelp.health.dto.MoodEntryRequest;
 import com.medihelp.health.dto.MoodEntryResponse;
@@ -18,12 +19,13 @@ public class MoodService {
 
     private final MoodEntryRepository moodEntryRepository;
     private final StreakService streakService;
+    private final EncryptionConfig encryption;
 
     public MoodEntryResponse addMoodEntry(UUID userId, MoodEntryRequest request) {
         MoodEntry entry = MoodEntry.builder()
                 .userId(userId.toString())
                 .mood(request.getMood())
-                .journalText(request.getJournalText())
+                .journalText(encryption.encrypt(request.getJournalText()))
                 .tags(request.getTags())
                 .sleepHours(request.getSleepHours())
                 .exerciseMinutes(request.getExerciseMinutes())
@@ -48,7 +50,7 @@ public class MoodService {
         return MoodEntryResponse.builder()
                 .id(m.getId())
                 .mood(m.getMood())
-                .journalText(m.getJournalText())
+                .journalText(encryption.decrypt(m.getJournalText()))
                 .tags(m.getTags())
                 .sleepHours(m.getSleepHours())
                 .exerciseMinutes(m.getExerciseMinutes())

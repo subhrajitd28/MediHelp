@@ -1,0 +1,14 @@
+Script started on 2026-04-04 09:56:56+00:00 [TERM="xterm-256color" TTY="/dev/pts/4" COLUMNS="156" LINES="41"]
+^[  ^C
+[?2004h]0;subhra28@AsusSD28: ~/medihelp/deploy[01;32msubhra28@AsusSD28[00m:[01;34m~/medihelp/deploy[00m$ cd scripts/
+[?2004l[?2004h]0;subhra28@AsusSD28: ~/medihelp/deploy/scripts[01;32msubhra28@AsusSD28[00m:[01;34m~/medihelp/deploy/scripts[00m$ ls
+[?2004lazure-start.ps1  azure-stop.ps1  [0m[01;32mlogs.sh[0m  [01;32mrestart-all.sh[0m  [01;32mstart-all.sh[0m  [01;32mstatus.sh[0m  [01;32mstop-all.sh[0m
+[?2004h]0;subhra28@AsusSD28: ~/medihelp/deploy/scripts[01;32msubhra28@AsusSD28[00m:[01;34m~/medihelp/deploy/scripts[00m$ ./[7mazure-stop.ps1[27mazure-stop.ps1\[K
+[?2004lbash: ./azure-stop.ps1: Permission denied
+[?2004h]0;subhra28@AsusSD28: ~/medihelp/deploy/scripts[01;32msubhra28@AsusSD28[00m:[01;34m~/medihelp/deploy/scripts[00m$ ./azure-stop.ps1s./azure-stop.ps1u./azure-stop.ps1d./azure-stop.ps1o./azure-stop.ps1 ./azure-stop.ps1
+[?2004l[sudo] password for subhra28: 
+sudo: ./azure-stop.ps1: command not found
+[?2004h]0;subhra28@AsusSD28: ~/medihelp/deploy/scripts[01;32msubhra28@AsusSD28[00m:[01;34m~/medihelp/deploy/scripts[00m$ exit
+[?2004lexit
+
+Script done on 2026-04-04 09:59:33+00:00 [COMMAND_EXIT_CODE="1"]
