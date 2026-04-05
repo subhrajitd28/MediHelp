@@ -6,9 +6,9 @@ spring:
     name: user-service
 
   datasource:
-    url: ${DB_URL:jdbc:postgresql://localhost:5434/medihelp_user}
-    username: ${DB_USER:user_user}
-    password: ${DB_PASSWORD:localdev}
+    url: ${USER_DB_URL:jdbc:postgresql://localhost:5434/medihelp_user}
+    username: ${USER_DB_USER:user_user}
+    password: ${USER_DB_PASSWORD:localdev}
     driver-class-name: org.postgresql.Driver
 
   jpa:

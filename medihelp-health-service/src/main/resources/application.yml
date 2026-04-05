@@ -6,9 +6,9 @@ spring:
     name: health-service
 
   datasource:
-    url: ${DB_URL:jdbc:postgresql://localhost:5435/medihelp_health}
-    username: ${DB_USER:health_user}
-    password: ${DB_PASSWORD:localdev}
+    url: ${HEALTH_DB_URL:jdbc:postgresql://localhost:5435/medihelp_health}
+    username: ${HEALTH_DB_USER:health_user}
+    password: ${HEALTH_DB_PASSWORD:localdev}
     driver-class-name: org.postgresql.Driver
 
   jpa:

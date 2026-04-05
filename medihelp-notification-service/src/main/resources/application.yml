@@ -6,9 +6,9 @@ spring:
     name: notification-service
 
   datasource:
-    url: ${DB_URL:jdbc:postgresql://localhost:5437/medihelp_notification}
-    username: ${DB_USER:notification_user}
-    password: ${DB_PASSWORD:localdev}
+    url: ${NOTIFICATION_DB_URL:jdbc:postgresql://localhost:5437/medihelp_notification}
+    username: ${NOTIFICATION_DB_USER:notification_user}
+    password: ${NOTIFICATION_DB_PASSWORD:localdev}
     driver-class-name: org.postgresql.Driver
 
   jpa:
