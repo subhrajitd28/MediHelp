@@ -2,15 +2,20 @@ import os
 import logging
 from typing import Optional
 
-import google.generativeai as genai
-
 logger = logging.getLogger(__name__)
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
+MODEL_NAME = "gemini-2.0-flash"
 
-MODEL_NAME = "gemini-1.5-flash"
+# Initialize the new google-genai client
+_client = None
+if GEMINI_API_KEY:
+    try:
+        from google import genai
+        _client = genai.Client(api_key=GEMINI_API_KEY)
+        logger.info("Gemini API client initialized with model: %s", MODEL_NAME)
+    except Exception as e:
+        logger.warning("Failed to initialize Gemini client: %s", e)
 
 SYMPTOM_TRIAGE_PROMPT = """You are a medical triage assistant. Based on the symptoms described below, provide:
 1. Urgency level: LOW, MEDIUM, HIGH, or EMERGENCY
@@ -70,7 +75,7 @@ async def triage_symptoms(
     existing_conditions: Optional[list[str]] = None,
     current_medications: Optional[list[str]] = None,
 ) -> dict:
-    if not GEMINI_API_KEY:
+    if not _client:
         return _mock_triage_response(symptoms)
 
     prompt = SYMPTOM_TRIAGE_PROMPT.format(
@@ -82,12 +87,10 @@ async def triage_symptoms(
     )
 
     try:
-        model = genai.GenerativeModel(MODEL_NAME)
-        response = model.generate_content(prompt)
+        response = _client.models.generate_content(model=MODEL_NAME, contents=prompt)
         import json
 
         text = response.text.strip()
-        # Strip markdown code block if present
         if text.startswith("```"):
             text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
         return json.loads(text)
@@ -102,7 +105,7 @@ async def get_diet_recommendations(
     restrictions: Optional[list[str]] = None,
     goal: Optional[str] = None,
 ) -> list[dict]:
-    if not GEMINI_API_KEY:
+    if not _client:
         return _mock_diet_response()
 
     prompt = DIET_PROMPT.format(
@@ -113,8 +116,7 @@ async def get_diet_recommendations(
     )
 
     try:
-        model = genai.GenerativeModel(MODEL_NAME)
-        response = model.generate_content(prompt)
+        response = _client.models.generate_content(model=MODEL_NAME, contents=prompt)
         import json
 
         text = response.text.strip()
@@ -131,7 +133,7 @@ async def get_exercise_recommendations(
     fitness_level: Optional[str] = None,
     restrictions: Optional[list[str]] = None,
 ) -> list[dict]:
-    if not GEMINI_API_KEY:
+    if not _client:
         return _mock_exercise_response()
 
     prompt = EXERCISE_PROMPT.format(
@@ -141,8 +143,7 @@ async def get_exercise_recommendations(
     )
 
     try:
-        model = genai.GenerativeModel(MODEL_NAME)
-        response = model.generate_content(prompt)
+        response = _client.models.generate_content(model=MODEL_NAME, contents=prompt)
         import json
 
         text = response.text.strip()
