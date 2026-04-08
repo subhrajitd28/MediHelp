@@ -38,6 +38,12 @@ echo "  Prescription PID: $!"
 java -Xmx256m -jar medihelp-notification-service/target/medihelp-notification-service-1.0.0-SNAPSHOT.jar &> /tmp/notification.log &
 echo "  Notification PID: $!"
 
+# AI Service (Python FastAPI)
+if [ -d "$PROJECT_DIR/medihelp-ai-service/venv" ]; then
+  (cd "$PROJECT_DIR/medihelp-ai-service" && source venv/bin/activate && nohup uvicorn app.main:app --host 0.0.0.0 --port 8000 &> /tmp/ai-service.log &)
+  echo "  AI Service PID: $!"
+fi
+
 echo "[4/4] Waiting (50s)..."
 sleep 50
 
