@@ -1,0 +1,19 @@
+.health-records { padding: 20px; max-width: 800px; margin: 0 auto; }
+.header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+.upload-form { margin-bottom: 20px; }
+.full-width { width: 100%; }
+.row { display: flex; gap: 16px; mat-form-field { flex: 1; } }
+.file-upload { margin: 16px 0; display: flex; align-items: center; gap: 12px; }
+.file-info { color: #666; font-size: 0.85rem; }
+.submit-btn { width: 100%; height: 44px; }
+.filter-chips { margin-bottom: 16px; }
+.loading { text-align: center; padding: 40px; }
+.empty { text-align: center; padding: 40px; mat-icon { font-size: 48px; width: 48px; height: 48px; color: #ccc; } p { color: #999; } }
+.records-list { display: flex; flex-direction: column; gap: 12px; }
+.record-card { padding: 16px; }
+.record-header { display: flex; align-items: center; gap: 12px; }
+.record-info { flex: 1; h3 { margin: 0; } }
+.meta { color: #666; font-size: 0.85rem; display: flex; gap: 12px; flex-wrap: wrap; margin-top: 4px; }
+.category-badge { background: #e8eaf6; color: #3f51b5; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; }
+.description { color: #555; margin: 8px 0 0 36px; }
+.file-badge { display: flex; align-items: center; gap: 8px; margin: 8px 0 0 36px; color: #666; font-size: 0.85rem; }

@@ -1,0 +1,201 @@
+<div class="ai-chat-container">
+  <h1 class="page-title">AI Health Assistant</h1>
+
+  <!-- Tab Buttons -->
+  <div class="tab-buttons">
+    <button mat-raised-button
+            [color]="activeTab === 'symptom' ? 'primary' : undefined"
+            (click)="switchTab('symptom')">
+      <mat-icon>medical_services</mat-icon>
+      Symptom Check
+    </button>
+    <button mat-raised-button
+            [color]="activeTab === 'diet' ? 'primary' : undefined"
+            (click)="switchTab('diet')">
+      <mat-icon>restaurant</mat-icon>
+      Diet Plan
+    </button>
+    <button mat-raised-button
+            [color]="activeTab === 'exercise' ? 'primary' : undefined"
+            (click)="switchTab('exercise')">
+      <mat-icon>fitness_center</mat-icon>
+      Exercise Plan
+    </button>
+  </div>
+
+  <!-- Optional Fields for Symptom Check -->
+  @if (activeTab === 'symptom') {
+    <div class="optional-fields">
+      <mat-form-field appearance="outline" class="small-field">
+        <mat-label>Age (optional)</mat-label>
+        <input matInput type="number" [(ngModel)]="age" min="1" max="120">
+      </mat-form-field>
+      <mat-form-field appearance="outline" class="small-field">
+        <mat-label>Gender (optional)</mat-label>
+        <mat-select [(ngModel)]="gender">
+          <mat-option value="">-- Select --</mat-option>
+          @for (g of genderOptions; track g) {
+            <mat-option [value]="g">{{ g | titlecase }}</mat-option>
+          }
+        </mat-select>
+      </mat-form-field>
+    </div>
+  }
+
+  <!-- Chat Area -->
+  <mat-card class="chat-card">
+    <mat-card-content>
+      <div class="chat-messages" #chatMessages>
+        @if (messages.length === 0 && !loading) {
+          <div class="empty-chat">
+            <mat-icon class="empty-icon">smart_toy</mat-icon>
+            @if (activeTab === 'symptom') {
+              <p>Describe your symptoms and I'll help assess the urgency and suggest next steps.</p>
+            } @else if (activeTab === 'diet') {
+              <p>Enter your health conditions and I'll suggest a personalized diet plan.</p>
+            } @else {
+              <p>Enter your health conditions and I'll recommend suitable exercises.</p>
+            }
+          </div>
+        }
+
+        @for (msg of messages; track msg.timestamp) {
+          <div class="message" [class.user-message]="msg.role === 'user'" [class.ai-message]="msg.role === 'ai'">
+            @if (msg.role === 'ai') {
+              <mat-icon class="avatar ai-avatar">smart_toy</mat-icon>
+            }
+            <div class="message-bubble">
+              <!-- Plain text message -->
+              @if (msg.text) {
+                <p class="message-text">{{ msg.text }}</p>
+              }
+
+              <!-- Triage Response -->
+              @if (msg.triageData) {
+                <div class="triage-response">
+                  <div class="urgency-badge" [class]="getUrgencyClass(msg.triageData.urgency)">
+                    {{ msg.triageData.urgency | uppercase }}
+                  </div>
+
+                  @if (msg.triageData.possible_conditions && msg.triageData.possible_conditions.length > 0) {
+                    <div class="section">
+                      <strong>Possible Conditions:</strong>
+                      <ul>
+                        @for (condition of msg.triageData.possible_conditions; track condition) {
+                          <li>{{ condition }}</li>
+                        }
+                      </ul>
+                    </div>
+                  }
+
+                  @if (msg.triageData.recommended_actions && msg.triageData.recommended_actions.length > 0) {
+                    <div class="section">
+                      <strong>Recommended Actions:</strong>
+                      <ul>
+                        @for (action of msg.triageData.recommended_actions; track action) {
+                          <li>{{ action }}</li>
+                        }
+                      </ul>
+                    </div>
+                  }
+
+                  @if (msg.triageData.disclaimer) {
+                    <div class="disclaimer">
+                      <mat-icon>info</mat-icon>
+                      <span>{{ msg.triageData.disclaimer }}</span>
+                    </div>
+                  }
+                </div>
+              }
+
+              <!-- Diet Response -->
+              @if (msg.dietData) {
+                <div class="recommendation-response">
+                  @if (msg.dietData.recommendations && msg.dietData.recommendations.length > 0) {
+                    <div class="rec-cards">
+                      @for (rec of msg.dietData.recommendations; track $index) {
+                        <div class="rec-card">
+                          <div class="rec-card-title">
+                            <mat-icon>restaurant</mat-icon>
+                            {{ getRecommendationTitle(rec) }}
+                          </div>
+                          <p class="rec-card-desc">{{ getRecommendationDescription(rec) }}</p>
+                        </div>
+                      }
+                    </div>
+                  } @else {
+                    <p>No specific diet recommendations found.</p>
+                  }
+
+                  @if (msg.dietData.disclaimer) {
+                    <div class="disclaimer">
+                      <mat-icon>info</mat-icon>
+                      <span>{{ msg.dietData.disclaimer }}</span>
+                    </div>
+                  }
+                </div>
+              }
+
+              <!-- Exercise Response -->
+              @if (msg.exerciseData) {
+                <div class="recommendation-response">
+                  @if (msg.exerciseData.recommendations && msg.exerciseData.recommendations.length > 0) {
+                    <div class="rec-cards">
+                      @for (rec of msg.exerciseData.recommendations; track $index) {
+                        <div class="rec-card">
+                          <div class="rec-card-title">
+                            <mat-icon>fitness_center</mat-icon>
+                            {{ getRecommendationTitle(rec) }}
+                          </div>
+                          <p class="rec-card-desc">{{ getRecommendationDescription(rec) }}</p>
+                        </div>
+                      }
+                    </div>
+                  } @else {
+                    <p>No specific exercise recommendations found.</p>
+                  }
+
+                  @if (msg.exerciseData.disclaimer) {
+                    <div class="disclaimer">
+                      <mat-icon>info</mat-icon>
+                      <span>{{ msg.exerciseData.disclaimer }}</span>
+                    </div>
+                  }
+                </div>
+              }
+            </div>
+            @if (msg.role === 'user') {
+              <mat-icon class="avatar user-avatar">person</mat-icon>
+            }
+          </div>
+        }
+
+        @if (loading) {
+          <div class="message ai-message">
+            <mat-icon class="avatar ai-avatar">smart_toy</mat-icon>
+            <div class="message-bubble loading-bubble">
+              <mat-spinner diameter="24"></mat-spinner>
+              <span>Analyzing...</span>
+            </div>
+          </div>
+        }
+      </div>
+    </mat-card-content>
+  </mat-card>
+
+  <!-- Input Area -->
+  <div class="input-area">
+    <mat-form-field appearance="outline" class="input-field">
+      <mat-label>{{ getInputPlaceholder() }}</mat-label>
+      <input matInput
+             [(ngModel)]="userInput"
+             (keydown)="onKeydown($event)"
+             [disabled]="loading">
+    </mat-form-field>
+    <button mat-fab color="primary"
+            (click)="send()"
+            [disabled]="loading || !userInput.trim()">
+      <mat-icon>send</mat-icon>
+    </button>
+  </div>
+</div>

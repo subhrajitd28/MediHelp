@@ -1,0 +1,126 @@
+<div class="health-records">
+  <div class="header">
+    <h2>Health Records</h2>
+    <button mat-raised-button color="primary" (click)="showForm = !showForm">
+      <mat-icon>{{ showForm ? 'close' : 'upload_file' }}</mat-icon>
+      {{ showForm ? 'Cancel' : 'Upload Record' }}
+    </button>
+  </div>
+
+  @if (showForm) {
+    <mat-card class="upload-form">
+      <mat-card-content>
+        <form [formGroup]="form" (ngSubmit)="onSubmit()">
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>Title</mat-label>
+            <input matInput formControlName="title" placeholder="e.g., Blood Test Report - March 2026">
+          </mat-form-field>
+
+          <div class="row">
+            <mat-form-field appearance="outline">
+              <mat-label>Category</mat-label>
+              <mat-select formControlName="category">
+                @for (cat of categories; track cat) {
+                  <mat-option [value]="cat">{{ cat.replace('_', ' ') }}</mat-option>
+                }
+              </mat-select>
+            </mat-form-field>
+
+            <mat-form-field appearance="outline">
+              <mat-label>Date</mat-label>
+              <input matInput [matDatepicker]="picker" formControlName="recordDate">
+              <mat-datepicker-toggle matSuffix [for]="picker"></mat-datepicker-toggle>
+              <mat-datepicker #picker></mat-datepicker>
+            </mat-form-field>
+          </div>
+
+          <div class="row">
+            <mat-form-field appearance="outline">
+              <mat-label>Doctor Name</mat-label>
+              <input matInput formControlName="doctorName">
+            </mat-form-field>
+
+            <mat-form-field appearance="outline">
+              <mat-label>Hospital</mat-label>
+              <input matInput formControlName="hospital">
+            </mat-form-field>
+          </div>
+
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>Description / Notes</mat-label>
+            <textarea matInput formControlName="description" rows="2"></textarea>
+          </mat-form-field>
+
+          <div class="file-upload">
+            <input type="file" #fileInput (change)="onFileSelected($event)"
+                   accept=".pdf,.jpg,.jpeg,.png,.webp" style="display:none">
+            <button mat-stroked-button type="button" (click)="fileInput.click()">
+              <mat-icon>attach_file</mat-icon>
+              {{ selectedFile ? selectedFile.name : 'Attach File (PDF, Image)' }}
+            </button>
+            @if (selectedFile) {
+              <span class="file-info">{{ formatSize(selectedFile.size) }}</span>
+            }
+          </div>
+
+          <button mat-raised-button color="primary" type="submit"
+                  [disabled]="form.invalid || uploading" class="submit-btn">
+            @if (uploading) { <mat-spinner diameter="20"></mat-spinner> }
+            @else { <mat-icon>cloud_upload</mat-icon> Upload Record }
+          </button>
+        </form>
+      </mat-card-content>
+    </mat-card>
+  }
+
+  <div class="filter-chips">
+    <mat-chip-set>
+      <mat-chip [highlighted]="filterCategory === ''" (click)="filterCategory = ''; loadRecords()">All</mat-chip>
+      @for (cat of categories; track cat) {
+        <mat-chip [highlighted]="filterCategory === cat"
+                  (click)="filterCategory = cat; loadRecords()">
+          {{ cat.replace('_', ' ') }}
+        </mat-chip>
+      }
+    </mat-chip-set>
+  </div>
+
+  @if (loading) {
+    <div class="loading"><mat-spinner diameter="40"></mat-spinner></div>
+  } @else if (records.length === 0) {
+    <mat-card class="empty">
+      <mat-icon>folder_open</mat-icon>
+      <p>No health records yet. Upload your first test report or doctor note.</p>
+    </mat-card>
+  } @else {
+    <div class="records-list">
+      @for (record of records; track record.id) {
+        <mat-card class="record-card">
+          <div class="record-header">
+            <mat-icon [color]="'primary'">{{ getCategoryIcon(record.category) }}</mat-icon>
+            <div class="record-info">
+              <h3>{{ record.title }}</h3>
+              <p class="meta">
+                <span class="category-badge">{{ record.category.replace('_', ' ') }}</span>
+                @if (record.doctorName) { <span>Dr. {{ record.doctorName }}</span> }
+                @if (record.recordDate) { <span>{{ record.recordDate }}</span> }
+              </p>
+            </div>
+            <button mat-icon-button color="warn" (click)="deleteRecord(record.id)">
+              <mat-icon>delete</mat-icon>
+            </button>
+          </div>
+          @if (record.description) {
+            <p class="description">{{ record.description }}</p>
+          }
+          @if (record.hasFile) {
+            <div class="file-badge">
+              <mat-icon>attachment</mat-icon>
+              <span>{{ record.fileName }} ({{ formatSize(record.fileSize) }})</span>
+            </div>
+          }
+        </mat-card>
+      }
+    </div>
+  }
+</div>

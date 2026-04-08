@@ -1,0 +1,229 @@
+<div class="scan-container">
+  <h1 class="page-title">Scan Prescription</h1>
+
+  <!-- Step Indicators -->
+  <div class="step-indicators">
+    <div class="step" [class.active]="currentStep >= 1" [class.done]="currentStep > 1">
+      <div class="step-number">1</div>
+      <span>Upload</span>
+    </div>
+    <div class="step-line" [class.active]="currentStep > 1"></div>
+    <div class="step" [class.active]="currentStep >= 2" [class.done]="currentStep > 2">
+      <div class="step-number">2</div>
+      <span>Review</span>
+    </div>
+    <div class="step-line" [class.active]="currentStep > 2"></div>
+    <div class="step" [class.active]="currentStep >= 3">
+      <div class="step-number">3</div>
+      <span>Confirm</span>
+    </div>
+  </div>
+
+  <!-- Step 1: Upload -->
+  @if (currentStep === 1) {
+    <mat-card class="upload-card">
+      <mat-card-content>
+        <div class="upload-area"
+             [class.drag-over]="dragOver"
+             (dragover)="onDragOver($event)"
+             (dragleave)="onDragLeave($event)"
+             (drop)="onDrop($event)"
+             (click)="fileInput.click()">
+          <input #fileInput type="file"
+                 [accept]="acceptedTypes"
+                 (change)="onFileSelected($event)"
+                 hidden>
+          @if (!selectedFile) {
+            <mat-icon class="upload-icon">cloud_upload</mat-icon>
+            <p class="upload-text">Drag & drop your prescription here</p>
+            <p class="upload-hint">or click to browse (JPEG, PNG, WebP, PDF)</p>
+          } @else {
+            @if (imagePreviewUrl) {
+              <img [src]="imagePreviewUrl" alt="Prescription preview" class="image-preview">
+            } @else {
+              <mat-icon class="file-icon">picture_as_pdf</mat-icon>
+              <p class="file-name">{{ selectedFile.name }}</p>
+            }
+          }
+        </div>
+
+        @if (selectedFile) {
+          <div class="upload-actions">
+            <button mat-stroked-button (click)="reset()">
+              <mat-icon>clear</mat-icon>
+              Change File
+            </button>
+            <button mat-raised-button color="primary"
+                    (click)="scanPrescription()"
+                    [disabled]="scanning">
+              @if (scanning) {
+                <mat-spinner diameter="20"></mat-spinner>
+                Scanning...
+              } @else {
+                <mat-icon>document_scanner</mat-icon>
+                Scan Prescription
+              }
+            </button>
+          </div>
+        }
+
+        @if (scanning) {
+          <mat-progress-bar mode="indeterminate" class="scan-progress"></mat-progress-bar>
+        }
+      </mat-card-content>
+    </mat-card>
+  }
+
+  <!-- Step 2: Review -->
+  @if (currentStep === 2) {
+    <div class="review-section">
+      <!-- Extracted Text -->
+      <mat-card class="review-card">
+        <mat-card-header>
+          <mat-card-title>
+            <mat-icon>text_snippet</mat-icon>
+            Extracted Text
+          </mat-card-title>
+          @if (ocrResult) {
+            <span class="confidence-badge">
+              Confidence: {{ (ocrResult.confidence * 100) | number:'1.0-0' }}%
+            </span>
+          }
+        </mat-card-header>
+        <mat-card-content>
+          <textarea class="extracted-text"
+                    [(ngModel)]="extractedText"
+                    readonly
+                    rows="6"></textarea>
+        </mat-card-content>
+      </mat-card>
+
+      <!-- Prescription Info -->
+      <mat-card class="review-card">
+        <mat-card-header>
+          <mat-card-title>
+            <mat-icon>assignment_ind</mat-icon>
+            Prescription Details (Optional)
+          </mat-card-title>
+        </mat-card-header>
+        <mat-card-content>
+          <div class="form-row">
+            <mat-form-field appearance="outline">
+              <mat-label>Doctor Name</mat-label>
+              <input matInput [(ngModel)]="doctorName" placeholder="Dr. ...">
+            </mat-form-field>
+            <mat-form-field appearance="outline">
+              <mat-label>Hospital / Clinic</mat-label>
+              <input matInput [(ngModel)]="hospital">
+            </mat-form-field>
+          </div>
+        </mat-card-content>
+      </mat-card>
+
+      <!-- Medications Table -->
+      <mat-card class="review-card">
+        <mat-card-header>
+          <mat-card-title>
+            <mat-icon>medication</mat-icon>
+            Extracted Medications
+          </mat-card-title>
+          <span class="spacer"></span>
+          <button mat-stroked-button color="primary" (click)="addMedication()">
+            <mat-icon>add</mat-icon>
+            Add Row
+          </button>
+        </mat-card-header>
+        <mat-card-content>
+          @if (medications.length > 0) {
+            <div class="medications-table">
+              <table mat-table [dataSource]="medications">
+                <ng-container matColumnDef="name">
+                  <th mat-header-cell *matHeaderCellDef>Drug Name</th>
+                  <td mat-cell *matCellDef="let med; let i = index">
+                    <input class="table-input" [(ngModel)]="medications[i].name" placeholder="Drug name">
+                  </td>
+                </ng-container>
+
+                <ng-container matColumnDef="dosage">
+                  <th mat-header-cell *matHeaderCellDef>Dosage</th>
+                  <td mat-cell *matCellDef="let med; let i = index">
+                    <input class="table-input" [(ngModel)]="medications[i].dosage" placeholder="e.g. 500mg">
+                  </td>
+                </ng-container>
+
+                <ng-container matColumnDef="frequency">
+                  <th mat-header-cell *matHeaderCellDef>Frequency</th>
+                  <td mat-cell *matCellDef="let med; let i = index">
+                    <input class="table-input" [(ngModel)]="medications[i].frequency" placeholder="e.g. Twice daily">
+                  </td>
+                </ng-container>
+
+                <ng-container matColumnDef="actions">
+                  <th mat-header-cell *matHeaderCellDef></th>
+                  <td mat-cell *matCellDef="let med; let i = index">
+                    <button mat-icon-button color="warn" (click)="removeMedication(i)">
+                      <mat-icon>delete</mat-icon>
+                    </button>
+                  </td>
+                </ng-container>
+
+                <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+                <tr mat-row *matRowDef="let row; columns: displayedColumns;"></tr>
+              </table>
+            </div>
+          } @else {
+            <div class="empty-state">
+              <mat-icon>medication</mat-icon>
+              <p>No medications extracted. Add them manually.</p>
+            </div>
+          }
+        </mat-card-content>
+      </mat-card>
+
+      <div class="review-actions">
+        <button mat-stroked-button (click)="currentStep = 1">
+          <mat-icon>arrow_back</mat-icon>
+          Back
+        </button>
+        <button mat-raised-button color="primary"
+                (click)="confirmAndCreate()"
+                [disabled]="saving || medications.length === 0">
+          @if (saving) {
+            <mat-spinner diameter="20"></mat-spinner>
+            Saving...
+          } @else {
+            <mat-icon>check_circle</mat-icon>
+            Confirm & Create Medications
+          }
+        </button>
+      </div>
+    </div>
+  }
+
+  <!-- Step 3: Success -->
+  @if (currentStep === 3 && saveComplete) {
+    <mat-card class="success-card">
+      <mat-card-content>
+        <div class="success-content">
+          <mat-icon class="success-icon">check_circle</mat-icon>
+          <h2>Prescription Saved Successfully!</h2>
+          <p>Your prescription and medications have been recorded.</p>
+          <div class="success-actions">
+            <button mat-raised-button color="primary" (click)="goToMedications()">
+              <mat-icon>medication</mat-icon>
+              View Medications
+            </button>
+            <button mat-raised-button (click)="goToPrescriptions()">
+              <mat-icon>description</mat-icon>
+              View Prescriptions
+            </button>
+            <button mat-stroked-button (click)="reset()">
+              <mat-icon>document_scanner</mat-icon>
+              Scan Another
+            </button>
+          </div>
+        </div>
+      </mat-card-content>
+    </mat-card>
+  }
+</div>

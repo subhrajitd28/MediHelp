@@ -1,0 +1,231 @@
+.prescriptions-container {
+  padding: 24px;
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.page-title {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 500;
+  color: #333;
+}
+
+.header-actions {
+  display: flex;
+  gap: 12px;
+
+  a, button {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+}
+
+// Loading
+.loading-container {
+  display: flex;
+  justify-content: center;
+  padding: 64px;
+}
+
+// Empty State
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 64px 24px;
+  color: #999;
+
+  mat-icon {
+    font-size: 64px;
+    width: 64px;
+    height: 64px;
+    margin-bottom: 16px;
+    color: #ccc;
+  }
+
+  p {
+    margin: 0;
+    font-size: 18px;
+  }
+
+  .hint {
+    font-size: 14px;
+    margin-top: 8px;
+  }
+}
+
+// Add Form
+.add-form-card {
+  margin-bottom: 24px;
+
+  mat-card-header {
+    margin-bottom: 16px;
+  }
+
+  mat-card-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 18px;
+  }
+}
+
+.form-row {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+
+  mat-form-field {
+    flex: 1;
+    min-width: 200px;
+  }
+}
+
+.full-width {
+  width: 100%;
+}
+
+// Prescription Panels
+.prescription-panel {
+  margin-bottom: 8px;
+
+  .rx-header-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+
+    .rx-icon {
+      color: #3f51b5;
+    }
+
+    .rx-doctor {
+      display: block;
+      font-weight: 600;
+      font-size: 15px;
+      color: #333;
+    }
+
+    .rx-hospital {
+      display: block;
+      font-size: 13px;
+      color: #777;
+    }
+  }
+
+  .rx-date {
+    font-size: 13px;
+    color: #666;
+    margin-right: 12px;
+  }
+}
+
+.ocr-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+
+  &.confirmed {
+    background: #e8f5e9;
+    color: #2e7d32;
+  }
+
+  &.manual {
+    background: #e3f2fd;
+    color: #1565c0;
+  }
+}
+
+// Prescription Details
+.rx-details {
+  padding: 8px 0;
+}
+
+.detail-section {
+  margin-bottom: 16px;
+
+  strong {
+    display: block;
+    font-size: 14px;
+    color: #555;
+    margin-bottom: 6px;
+  }
+
+  p {
+    margin: 0;
+    font-size: 14px;
+    color: #333;
+    line-height: 1.5;
+  }
+}
+
+.ocr-text {
+  background: #f5f5f5;
+  padding: 12px;
+  border-radius: 8px;
+  font-family: 'Roboto Mono', monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+  margin: 0;
+  border: 1px solid #e0e0e0;
+}
+
+.linked-meds {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.linked-med-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: #f9f9f9;
+  border-radius: 8px;
+  border-left: 3px solid #3f51b5;
+
+  mat-icon {
+    color: #3f51b5;
+    font-size: 20px;
+    width: 20px;
+    height: 20px;
+  }
+
+  .med-name {
+    font-weight: 600;
+    font-size: 14px;
+    color: #333;
+  }
+
+  .med-dosage {
+    font-size: 13px;
+    color: #666;
+  }
+
+  .med-freq {
+    font-size: 12px;
+    color: #999;
+    margin-left: auto;
+  }
+}
+
+.no-meds {
+  color: #999;
+  font-style: italic;
+}

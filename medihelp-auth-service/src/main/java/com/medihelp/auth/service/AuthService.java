@@ -32,6 +32,7 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
     private final OtpService otpService;
+    private final EmailService emailService;
     private final RabbitTemplate rabbitTemplate;
     private final StringRedisTemplate redisTemplate;
 
@@ -63,8 +64,9 @@ public class AuthService {
 
         userAuthRepository.save(user);
 
-        // TODO: Send OTP via email (Resend integration in Notification Service)
-        log.info("OTP generated for {}: {} (send via email in production)", request.getEmail(), otp);
+        // Send OTP via email
+        log.info("OTP generated for {}: {}", request.getEmail(), otp);
+        emailService.sendOtpEmail(request.getEmail(), otp);
 
         return "Registration successful. Please verify your email with the OTP sent.";
     }
@@ -209,8 +211,9 @@ public class AuthService {
         user.setOtpExpiry(Instant.now().plus(Duration.ofMinutes(OTP_VALIDITY_MINUTES)));
         userAuthRepository.save(user);
 
-        // TODO: Send OTP via email
-        log.info("Password reset OTP for {}: {} (send via email in production)", email, otp);
+        // Send password reset OTP via email
+        log.info("Password reset OTP for {}: {}", email, otp);
+        emailService.sendPasswordResetEmail(email, otp);
 
         return "Password reset OTP sent to your email.";
     }

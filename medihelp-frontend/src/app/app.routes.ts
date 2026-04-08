@@ -54,5 +54,29 @@ export const routes: Routes = [
       import('./features/notifications/notifications.component').then(m => m.NotificationsComponent),
     canActivate: [authGuard]
   },
+  {
+    path: 'ai-chat',
+    loadComponent: () =>
+      import('./features/ai-chat/ai-chat.component').then(m => m.AiChatComponent),
+    canActivate: [authGuard]
+  },
+  {
+    path: 'scan',
+    loadComponent: () =>
+      import('./features/prescription-scan/prescription-scan.component').then(m => m.PrescriptionScanComponent),
+    canActivate: [authGuard]
+  },
+  {
+    path: 'prescriptions',
+    loadComponent: () =>
+      import('./features/prescriptions/prescriptions.component').then(m => m.PrescriptionsComponent),
+    canActivate: [authGuard]
+  },
+  {
+    path: 'health-records',
+    loadComponent: () =>
+      import('./features/health-records/health-records.component').then(m => m.HealthRecordsComponent),
+    canActivate: [authGuard]
+  },
   { path: '**', redirectTo: '/' }
 ];

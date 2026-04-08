@@ -22,6 +22,10 @@ export class SidebarComponent {
     { label: 'Vitals', icon: 'monitor_heart', route: '/vitals' },
     { label: 'Medications', icon: 'medication', route: '/medications' },
     { label: 'Appointments', icon: 'calendar_month', route: '/appointments' },
+    { label: 'AI Health Chat', icon: 'smart_toy', route: '/ai-chat' },
+    { label: 'Scan Prescription', icon: 'document_scanner', route: '/scan' },
+    { label: 'Prescriptions', icon: 'description', route: '/prescriptions' },
+    { label: 'Health Records', icon: 'folder_shared', route: '/health-records' },
     { label: 'Profile', icon: 'person', route: '/profile' },
     { label: 'Notifications', icon: 'notifications', route: '/notifications' }
   ];
