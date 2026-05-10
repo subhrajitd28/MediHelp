@@ -44,12 +44,14 @@ spring:
           predicates:
             - Path=/api/v1/prescriptions/**
 
-        # AI Recommendation Service (rate limited)
-        - id: ai-service
-          uri: lb://ai-service
+        # Medical Chatbot Service (RAG + Groq) - replaces the deprecated ai-service
+        # Strips the /api/v1/chatbot prefix so /api/v1/chatbot/get -> /get on Flask app
+        - id: chatbot-service
+          uri: lb://chatbot-service
           predicates:
-            - Path=/api/v1/ai/**
+            - Path=/api/v1/chatbot/**
           filters:
+            - StripPrefix=3
             - name: RequestRateLimiter
               args:
                 redis-rate-limiter.replenishRate: 20

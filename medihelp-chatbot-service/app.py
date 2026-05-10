@@ -1,0 +1,1740 @@
+import os
+import re
+import uuid
+import base64
+import tempfile
+import traceback
+from datetime import datetime, timezone
+
+from dotenv import load_dotenv
+from flask import Flask, render_template, request, jsonify, session
+from flask_cors import CORS
+
+from pinecone import Pinecone
+from langchain_pinecone import PineconeVectorStore
+from langchain_groq import ChatGroq
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser
+from operator import itemgetter
+
+import sys
+sys.path.append(os.path.join(os.path.dirname(__file__), "src"))
+from src.helper import get_embeddings
+from src.prompt import (system_prompt, nutrition_prompt_template,
+                        symptom_extraction_prompt, fallback_disease_prompt,
+                        home_care_prompt, food_suggestion_prompt,
+                        DISEASE_RESTRICTIONS)
+
+load_dotenv()
+
+# ── Tesseract binary path (needed on some systems / conda envs) ──────────────
+import pytesseract
+tesseract_cmd = os.getenv("TESSERACT_CMD")
+if tesseract_cmd:
+    pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
+
+PINECONE_API_KEY    = os.getenv("PINECONE_API_KEY")
+GROQ_API_KEY        = os.getenv("GROQ_API_KEY")
+INDEX_NAME          = os.getenv("PINECONE_INDEX_NAME", "medical-chatbot")
+SECRET_KEY          = os.getenv("SECRET_KEY", "dev-secret-change-in-prod")
+FRIEND_ADVISOR_URL  = os.getenv("FRIEND_ADVISOR_URL", "http://localhost:8000/advise")
+if not PINECONE_API_KEY or not GROQ_API_KEY:
+    raise ValueError("PINECONE_API_KEY or GROQ_API_KEY missing in .env!")
+
+app = Flask(__name__)
+app.secret_key = SECRET_KEY
+CORS(app)
+
+# ── Database — all schema, tables and migrations live in db.py ───────────────
+import sqlite3, json
+from db import get_db, init_db
+
+init_db()
+
+# ── Vector Stores — two Pinecone namespaces ──────────────────────────────────
+def _init_vector_stores():
+    embeddings = get_embeddings()
+    pc = Pinecone(api_key=PINECONE_API_KEY)
+    if INDEX_NAME not in pc.list_indexes().names():
+        raise ValueError(f"Index '{INDEX_NAME}' not found. Run store_index.py first.")
+    general = PineconeVectorStore.from_existing_index(
+        index_name=INDEX_NAME, embedding=embeddings, namespace="general")
+    nutrition = PineconeVectorStore.from_existing_index(
+        index_name=INDEX_NAME, embedding=embeddings, namespace="nutrition")
+    return general, nutrition
+
+print("🔧 Loading vector stores…")
+vs_general, vs_nutrition = _init_vector_stores()
+retriever_general   = vs_general.as_retriever(search_kwargs={"k": 4})
+retriever_nutrition = vs_nutrition.as_retriever(search_kwargs={"k": 5})
+print("✅ Vector stores ready")
+
+# ── LLM ──────────────────────────────────────────────────────────────────────
+chat_model = ChatGroq(
+    model="llama-3.3-70b-versatile",
+    api_key=GROQ_API_KEY,
+    temperature=0,
+    max_retries=2,
+)
+
+# ── Chain A: Disease identification (RAG-grounded) ───────────────────────────
+disease_chain = (
+    {
+        "context":         itemgetter("input") | retriever_general,
+        "input":           itemgetter("input"),
+        "symptom_context": itemgetter("symptom_context"),
+    }
+    | ChatPromptTemplate.from_messages([
+        ("system", system_prompt),
+        ("human", "{input}")
+    ])
+    | chat_model
+    | StrOutputParser()
+)
+
+# ── Chain A fallback: pure LLM reasoning (no RAG, used when RAG returns general) ──
+fallback_disease_chain = (
+    ChatPromptTemplate.from_messages([
+        ("system", fallback_disease_prompt),
+        ("human", "Please give your best clinical assessment.")
+    ])
+    | chat_model
+    | StrOutputParser()
+)
+
+# ── Chain B: Nutrition recommendation ────────────────────────────────────────
+# Richer retrieval query — "disease nutritional requirements dietary guidelines"
+# gives far better Pinecone results than just the disease name
+def _nutrition_query(inputs: dict) -> str:
+    return f"{inputs['disease']} nutritional requirements dietary guidelines management"
+
+nutrition_chain = (
+    {
+        "context":      _nutrition_query | retriever_nutrition,
+        "disease":      itemgetter("disease"),
+        "disease_info": itemgetter("disease_info"),
+    }
+    | ChatPromptTemplate.from_messages([
+        ("system", nutrition_prompt_template),
+        ("human", "Patient disease: {disease}\n\nProvide the personalised daily nutritional requirements.")
+    ])
+    | chat_model
+    | StrOutputParser()
+)
+
+# ── Chain C: Home care / exercise plan (shown to user) ───────────────────────
+# Only invoked for MILD and MODERATE severity.
+# CRITICAL / URGENT skip it — emergency modal takes over.
+home_care_chain = (
+    ChatPromptTemplate.from_messages([
+        ("system", home_care_prompt),
+        ("human", "Generate the home management plan for {disease} (severity: {severity}).")
+    ])
+    | chat_model
+    | StrOutputParser()
+)
+
+# ── Chain D: Food suggestion — for friend's meal planning system ─────────────
+# Takes disease + region + parsed macro targets → full meal plan JSON.
+# Called via POST /api/food-suggestions (separate from the main chat pipeline).
+food_suggestion_chain = (
+    ChatPromptTemplate.from_messages([
+        ("system", food_suggestion_prompt),
+        ("human",  "Generate the full day meal plan for {disease} patient in {region}.")
+    ])
+    | chat_model
+    | StrOutputParser()
+)
+
+def _get_restrictions(disease: str) -> str:
+    """Return disease-specific dietary restrictions string for the food prompt."""
+    disease_lower = disease.lower().strip()
+    for key, val in DISEASE_RESTRICTIONS.items():
+        if key in disease_lower or disease_lower in key:
+            return val
+    return DISEASE_RESTRICTIONS["default"]
+
+def _parse_macro_targets(nutrition_json: dict) -> dict:
+    """
+    Convert stored nutrition_json (direction-based) into gram values
+    the food suggestion chain can use directly.
+    Uses standard 2000 kcal reference and adjusts by direction.
+    """
+    # Baseline gram values for a 2000 kcal diet
+    base = {
+        "carbs_g":   250,   # 50% of 2000 kcal / 4 kcal per g
+        "protein_g":  75,   # 15% of 2000 kcal / 4 kcal per g
+        "fat_g":      56,   # 25% of 2000 kcal / 9 kcal per g
+        "fiber_g":    28,
+        "water_l":   2.7,
+    }
+    direction_multiplier = {
+        "increase": 1.25,
+        "decrease": 0.75,
+        "restrict": 0.50,
+        "normal":   1.00,
+    }
+    nutrients = nutrition_json.get("nutrients", {})
+    result    = dict(base)
+
+    mapping = {
+        "carbohydrates": "carbs_g",
+        "protein":       "protein_g",
+        "fat":           "fat_g",
+        "fiber":         "fiber_g",
+        "water":         "water_l",
+    }
+    for nutrient_key, gram_key in mapping.items():
+        for stored_key, data in nutrients.items():
+            if nutrient_key in stored_key:
+                direction  = data.get("direction", "normal")
+                multiplier = direction_multiplier.get(direction, 1.0)
+                result[gram_key] = round(base[gram_key] * multiplier, 1)
+                break
+
+    return result
+def _parse_nutrition_table(markdown_table: str, disease: str) -> dict:
+    """
+    Parse the markdown nutrition table into structured JSON for friend's food system.
+    Returns a dict with each nutrient as a key.
+    """
+    result = {"disease": disease, "nutrients": {}}
+    try:
+        rows = [line.strip() for line in markdown_table.splitlines()
+                if line.strip().startswith("|") and "---" not in line]
+        # skip header row
+        for row in rows[1:]:
+            cols = [c.strip() for c in row.split("|") if c.strip()]
+            if len(cols) >= 3:
+                nutrient = cols[0].lower().replace(" ", "_")
+                amount   = cols[1]
+                note     = cols[2] if len(cols) > 2 else ""
+                # extract direction
+                direction = "normal"
+                if "↑" in amount or "up" in amount.lower():  direction = "increase"
+                elif "↓" in amount or "down" in amount.lower(): direction = "decrease"
+                elif "restrict" in amount.lower():             direction = "restrict"
+                result["nutrients"][nutrient] = {
+                    "recommended": amount,
+                    "direction":   direction,
+                    "note":        note,
+                }
+    except Exception as e:
+        print(f"⚠️  Nutrition parse error: {e}")
+    return result
+
+def _store_nutrition_targets(user_id: str, session_id: str, disease: str,
+                              nutrition_json: dict) -> None:
+    """Store parsed nutrition targets in DB for friend's food recommendation system."""
+    try:
+        db = get_db()
+        db.execute(
+            "INSERT INTO nutrition_targets (user_id, session_id, disease, nutrition_json, created_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (user_id, session_id, disease,
+             json.dumps(nutrition_json),
+             datetime.now(timezone.utc).isoformat())
+        )
+        db.commit()
+        print(f"✅ Nutrition targets stored silently for user {user_id}")
+    except Exception as e:
+        print(f"⚠️  Nutrition store error: {e}")
+
+# ════════════════════════════════════════════════════════════════════════════
+# USER / SESSION HELPERS
+# ════════════════════════════════════════════════════════════════════════════
+def get_current_user() -> str:
+    """
+    Read the authenticated user's UUID from the X-User-Id header injected by
+    medihelp-gateway after JWT validation. The gateway is the only auth point
+    in MediHelp; downstream services never parse JWTs themselves.
+
+    Falls back to a Flask-session UUID only when running standalone (no gateway
+    in front) so the chat UI stays usable for local Flask testing.
+    """
+    user_id = request.headers.get("X-User-Id")
+    if user_id:
+        return user_id
+    if "user_id" not in session:
+        session["user_id"] = str(uuid.uuid4())
+    return session["user_id"]
+
+def _ensure_session(user_id: str, session_id) -> str:
+    """Return existing session_id if valid, otherwise create a new one."""
+    with get_db() as conn:
+        if session_id:
+            row = conn.execute(
+                "SELECT session_id FROM sessions WHERE session_id=? AND user_id=?",
+                (session_id, user_id)
+            ).fetchone()
+            if row:
+                return session_id
+        # Create new session
+        new_sid = str(uuid.uuid4())
+        conn.execute(
+            "INSERT INTO sessions (session_id, user_id, created_at) VALUES (?,?,?)",
+            (new_sid, user_id, datetime.now(timezone.utc).isoformat())
+        )
+    return new_sid
+
+def _append_msgs(user_id: str, sid: str, msgs: list):
+    """Insert one or more messages into the messages table."""
+    ts = datetime.now(timezone.utc).isoformat()
+    with get_db() as conn:
+        conn.executemany(
+            "INSERT INTO messages (session_id, user_id, role, content, ts) VALUES (?,?,?,?,?)",
+            [(sid, user_id, m["role"], m["content"], ts) for m in msgs]
+        )
+
+def _get_msgs(user_id: str, sid: str) -> list:
+    """Return all messages for a session as a list of dicts."""
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT role, content, ts FROM messages WHERE session_id=? AND user_id=? ORDER BY id",
+            (sid, user_id)
+        ).fetchall()
+    return [{"role": r["role"], "content": r["content"], "ts": r["ts"]} for r in rows]
+
+def _update_session_meta(user_id: str, sid: str, disease: str, severity: str):
+    """Save the latest disease and severity onto the session row."""
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE sessions SET last_disease=?, last_severity=? "
+            "WHERE session_id=? AND user_id=?",
+            (disease, severity, sid, user_id)
+        )
+
+def _history_ctx(msgs: list, max_turns: int = 6) -> str:
+    tail = msgs[-(max_turns * 2):]
+    return "\n".join(
+        ("Patient" if m["role"] == "user" else "Assistant") + ": " + m["content"]
+        for m in tail
+    )
+
+# ════════════════════════════════════════════════════════════════════════════
+# SEVERITY DETECTION
+# ════════════════════════════════════════════════════════════════════════════
+
+# Conditions that always trigger CRITICAL — must be NAMED in disease or query
+# These are specific diagnosed conditions, NOT generic symptoms
+CRITICAL_CONDITIONS = {
+    "heart attack", "myocardial infarction", "cardiac arrest", "heart failure",
+    "acute coronary syndrome", "ventricular fibrillation", "cardiac tamponade",
+    "stroke", "brain hemorrhage", "brain bleed", "intracranial hemorrhage",
+    "subarachnoid hemorrhage", "status epilepticus", "meningitis", "encephalitis",
+    "pulmonary embolism", "tension pneumothorax", "respiratory failure",
+    "anaphylaxis", "anaphylactic shock", "sepsis", "septic shock",
+    "toxic shock syndrome", "bowel perforation", "aortic aneurysm",
+    "aortic dissection", "ruptured ectopic", "eclampsia",
+    "diabetic ketoacidosis", "dka", "hypoglycemic coma", "thyroid storm",
+    "adrenal crisis", "spinal injury", "drowning",
+    "internal bleeding", "severe hemorrhage", "hypertensive crisis",
+}
+
+# Symptoms that alone in the patient's OWN WORDS warrant URGENT — must be explicit
+URGENT_SYMPTOMS = {
+    # Chest — only specific descriptions
+    "chest pain", "chest tightness", "chest pressure", "crushing chest",
+    "pain radiating to arm", "pain radiating to jaw",
+    # Breathing — only acute
+    "can't breathe", "cannot breathe", "unable to breathe",
+    "difficulty breathing", "coughing blood", "blood in sputum",
+    # Neuro — only sudden onset
+    "sudden severe headache", "worst headache of my life", "thunderclap headache",
+    "sudden confusion", "slurred speech", "face drooping", "arm weakness",
+    "sudden numbness", "sudden vision loss",
+    "loss of consciousness", "unconscious", "not responding",
+    "seizure", "convulsion",
+    # Bleeding
+    "vomiting blood", "blood in stool", "rectal bleeding",
+    "severe bleeding", "won't stop bleeding", "coughing up blood",
+    # Allergic — acute
+    "throat swelling", "tongue swelling", "lips swelling",
+    # Vitals — only extreme values explicitly stated
+    "fever above 104", "fever 105", "fever 106",
+    "bluish lips", "blue lips",
+    # Misc
+    "overdose", "poisoned", "not breathing",
+    "baby not moving",
+}
+
+# Mild/common conditions — always cap at MODERATE regardless of LLM
+MILD_CONDITIONS = {
+    "common cold", "influenza", "viral fever", "flu",
+    "upper respiratory tract infection", "urti",
+    "mild fever", "low grade fever",
+    "indigestion", "acid reflux", "heartburn",
+    "mild headache", "tension headache",
+    "mild gastroenteritis", "stomach bug",
+    "mild allergic reaction", "hay fever",
+    "minor cut", "bruise", "sprain",
+    "mild anemia", "fatigue",
+}
+
+def _assess_severity(query: str, disease: str, disease_info: str,
+                     symptom_data: dict = None) -> dict:
+    """
+    3-step severity assessment with structured symptom context.
+    symptom_data: extracted dict from _extract_symptoms()
+    """
+    sx                 = symptom_data or {}
+    query_lower        = query.lower()
+    disease_lower      = disease.lower()
+    disease_info_lower = disease_info.lower()
+
+    # ── Pull structured context ──────────────────────────────────────────────
+    duration    = sx.get("duration", "unknown").lower()
+    age_raw     = sx.get("age", "not mentioned").lower()
+    worsening   = sx.get("worsening", "unknown").lower()
+    temperature = sx.get("temperature", "not mentioned").lower()
+    sev_words   = [w.lower() for w in sx.get("severity_words", [])]
+
+    # Parse age into a number if possible
+    age_num = None
+    age_match = re.search(r"\b(\d+)\b", age_raw)
+    if age_match:
+        age_num = int(age_match.group(1))
+
+    # Parse temperature to float
+    temp_val = None
+    temp_match = re.search(r"(\d+\.?\d*)\s*[°]?\s*[fF]", temperature)
+    if temp_match:
+        temp_val = float(temp_match.group(1))
+    temp_c_match = re.search(r"(\d+\.?\d*)\s*[°]?\s*[cC]", temperature)
+    if temp_c_match:
+        temp_val = float(temp_c_match.group(1)) * 9/5 + 32  # convert to F
+
+    # ── Pre-check: structured escalation rules ───────────────────────────────
+    # High fever: >104°F always URGENT; >105°F = CRITICAL; infant with >100.4°F = URGENT
+    structured_escalation = None
+    if temp_val is not None:
+        if temp_val >= 105:
+            structured_escalation = "CRITICAL"
+            print(f"🌡️  Temp {temp_val:.1f}°F ≥ 105 → CRITICAL")
+        elif temp_val >= 104:
+            structured_escalation = "URGENT"
+            print(f"🌡️  Temp {temp_val:.1f}°F ≥ 104 → URGENT")
+        elif temp_val >= 103 and age_num is not None and age_num < 2:
+            structured_escalation = "URGENT"
+            print(f"🌡️  Temp {temp_val:.1f}°F in infant → URGENT")
+
+    # Long duration + worsening → at least URGENT
+    duration_days = None
+    dur_match = re.search(r"(\d+)\s*day", duration)
+    if dur_match:
+        duration_days = int(dur_match.group(1))
+    if duration_days and duration_days >= 7 and worsening == "yes":
+        if not structured_escalation:
+            structured_escalation = "URGENT"
+            print(f"📅 {duration_days} days + worsening → URGENT")
+
+    # Very young (<2) or elderly (>70) with any infection → minimum MODERATE
+    if age_num is not None and not structured_escalation:
+        if age_num < 2 or age_num > 70:
+            structured_escalation = "MODERATE"
+            print(f"👤 Age {age_num} → minimum MODERATE")
+
+    # ── Step 1: Keyword check ─────────────────────────────────────────────────
+    matched_critical = next(
+        (c for c in CRITICAL_CONDITIONS
+         if c in disease_lower or c in disease_info_lower), None)
+
+    # Also check query but only for very explicit critical phrases
+    if not matched_critical:
+        critical_query_phrases = {
+            "heart attack", "stroke", "overdose", "not breathing",
+            "poisoned", "anaphylaxis", "seizure", "convulsion",
+        }
+        matched_critical = next(
+            (c for c in critical_query_phrases if c in query_lower), None)
+
+    matched_urgent = next(
+        (s for s in URGENT_SYMPTOMS if s in query_lower), None)
+
+    instant_level = None
+    if matched_critical:
+        instant_level = "CRITICAL"
+        print(f"🚨 Instant CRITICAL match: '{matched_critical}'")
+    elif matched_urgent:
+        instant_level = "URGENT"
+        print(f"⚠️  Instant URGENT match: '{matched_urgent}'")
+
+    # ── Step 2: LLM severity assessment ─────────────────────────────────────
+    severity_prompt = ChatPromptTemplate.from_messages([
+        ("system",
+         "You are a senior emergency medicine physician doing triage.\n"
+         "Classify the severity of this condition as exactly ONE of these levels:\n\n"
+         "CRITICAL — immediately life-threatening. Only use for:\n"
+         "  Heart attack, stroke, severe anaphylaxis, septic shock, overdose,\n"
+         "  uncontrolled severe bleeding, complete respiratory failure,\n"
+         "  loss of consciousness with unknown cause.\n\n"
+         "URGENT — needs a doctor or clinic TODAY but is NOT immediately life-threatening.\n"
+         "  Examples: high fever (103°F+) in adults, moderate infection, suspected fracture,\n"
+         "  persistent vomiting/diarrhea, worsening symptoms over 2-3 days.\n\n"
+         "MODERATE — needs a doctor visit within 2-3 days. Not urgent.\n"
+         "  Examples: low-grade fever, mild infection, UTI, rash, persistent cough,\n"
+         "  flu/viral fever with manageable symptoms, mild headache.\n\n"
+         "MILD — can safely be managed at home.\n"
+         "  Examples: common cold, minor cut, indigestion, mild fatigue, "
+         "  headache with no red flags, 1-2 day fever below 103°F.\n\n"
+         "PATIENT CONTEXT:\n"
+         "  Duration: {duration} | Age: {age} | Worsening: {worsening}\n"
+         "  Temperature: {temperature}\n\n"
+         "CALIBRATION RULES:\n"
+         "- Flu, viral fever, common cold → MILD or MODERATE only\n"
+         "- Fever below 103°F, no red flags → MILD or MODERATE\n"
+         "- Do NOT use CRITICAL unless objectively life-threatening\n"
+         "- When unsure between MILD and MODERATE → choose MODERATE\n"
+         "- When unsure between MODERATE and URGENT → choose MODERATE\n"
+         "- Worsening symptoms for 7+ days → escalate to URGENT\n\n"
+         "Respond in EXACTLY this format:\n"
+         "SEVERITY: <CRITICAL|URGENT|MODERATE|MILD>\n"
+         "REASON: <one sentence clinical reason>\n"
+         "ACTION: <one sentence — what the patient should do right now>"),
+        ("human",
+         "Disease: {disease}\n"
+         "Clinical description:\n{disease_info}\n\n"
+         "Patient's own words: {query}")
+    ])
+
+    severity_chain = severity_prompt | chat_model | StrOutputParser()
+
+    try:
+        llm_resp = severity_chain.invoke({
+            "disease":      disease,
+            "disease_info": disease_info[:600],
+            "query":        query[:300],
+            "duration":     duration,
+            "age":          age_raw,
+            "worsening":    worsening,
+            "temperature":  temperature,
+        })
+        sev_match    = re.search(r"SEVERITY:\s*(CRITICAL|URGENT|MODERATE|MILD)",
+                                 llm_resp, re.IGNORECASE)
+        reason_match = re.search(r"REASON:\s*(.+)",  llm_resp, re.IGNORECASE)
+        action_match = re.search(r"ACTION:\s*(.+)",  llm_resp, re.IGNORECASE)
+
+        llm_level  = sev_match.group(1).upper()   if sev_match    else "MODERATE"
+        llm_reason = reason_match.group(1).strip() if reason_match else ""
+        llm_action = action_match.group(1).strip() if action_match else ""
+        print(f"🤖 LLM severity: {llm_level} — {llm_reason}")
+
+    except Exception as e:
+        print(f"⚠️  Severity LLM error: {e} — defaulting to MODERATE")
+        llm_level  = "MODERATE"
+        llm_reason = ""
+        llm_action = ""
+
+    # ── Step 3: Final level ──────────────────────────────────────────────────
+    order = {"CRITICAL": 4, "URGENT": 3, "MODERATE": 2, "MILD": 1}
+
+    # Cap mild known diseases at MODERATE
+    is_mild_disease = any(m in disease_lower for m in MILD_CONDITIONS)
+    if is_mild_disease:
+        # Still respect structured escalation (e.g. infant with flu = MODERATE at least)
+        instant_level = None
+        llm_level = min(llm_level, "MODERATE", key=lambda x: order.get(x, 0))
+        print(f"🟢 Mild disease — capped at MODERATE")
+
+    # Take worst of: structured rules, keyword match, LLM
+    candidates = [llm_level]
+    if instant_level:
+        candidates.append(instant_level)
+    if structured_escalation:
+        candidates.append(structured_escalation)
+
+    final_level = max(candidates, key=lambda x: order.get(x, 0))
+    print(f"✅ Final severity: {final_level} "
+          f"(LLM={llm_level}, keyword={instant_level}, structured={structured_escalation})")
+
+    # ── Build alert payload ──────────────────────────────────────────────────
+    alert_config = {
+        "CRITICAL": {
+            "show":    True,
+            "color":   "#ff1744",
+            "icon":    "🚨",
+            "title":   "EMERGENCY — Go to Hospital Immediately!",
+            "message": (llm_action or
+                        "This condition may be life-threatening. "
+                        "Call emergency services (108 / 112) or go to the nearest "
+                        "emergency room RIGHT NOW. Do not wait."),
+            "call":    "108",
+        },
+        "URGENT": {
+            "show":    False,
+            "color":   "#ff6d00",
+            "icon":    "⚠️",
+            "title":   "See a Doctor Today — Do Not Delay",
+            "message": (llm_action or
+                        "Your symptoms need prompt medical attention. "
+                        "Please visit a doctor or urgent care clinic today."),
+            "call":    None,
+        },
+        "MODERATE": {
+            "show":    False,
+            "color":   "#ffd600",
+            "icon":    "ℹ️",
+            "title":   "Doctor Visit Recommended",
+            "message": (llm_action or
+                        "Consider scheduling a doctor appointment within the next 2-3 days."),
+            "call":    None,
+        },
+        "MILD": {
+            "show":    False,
+            "color":   "#00c853",
+            "icon":    "✅",
+            "title":   "Manageable at Home",
+            "message": (llm_action or
+                        "Monitor your symptoms. See a doctor if they worsen."),
+            "call":    None,
+        },
+    }
+
+    cfg = alert_config.get(final_level, alert_config["URGENT"])
+    hospital_url = "https://www.google.com/maps/search/hospital+near+me"
+
+    return {
+        "severity":      final_level,
+        "show_alert":    cfg["show"],
+        "alert_color":   cfg["color"],
+        "alert_icon":    cfg["icon"],
+        "alert_title":   cfg["title"],
+        "alert_message": cfg["message"],
+        "emergency_call":cfg["call"],
+        "hospital_url":  hospital_url,
+        "reason":        llm_reason,
+    }
+
+# ════════════════════════════════════════════════════════════════════════════
+# PIPELINE HELPERS
+# ════════════════════════════════════════════════════════════════════════════
+def _extract_disease(text: str) -> str:
+    m = re.search(r"IDENTIFIED_DISEASE:\s*(.+)", text, re.IGNORECASE)
+    return m.group(1).strip() if m else "general"
+
+def _extract_symptoms(query: str) -> dict:
+    """
+    Step 0: Extract structured symptom data from raw patient query.
+    Returns a dict with symptoms, duration, severity_words, temperature,
+    location, onset, age, existing_conditions, worsening.
+    Falls back to empty defaults on any failure.
+    """
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", symptom_extraction_prompt),
+        ("human", "{query}")
+    ])
+    chain = prompt | chat_model | StrOutputParser()
+    try:
+        raw = chain.invoke({"query": query})
+        # strip markdown fences if present
+        clean = re.sub(r"```(?:json)?|```", "", raw).strip()
+        return json.loads(clean)
+    except Exception as e:
+        print(f"⚠️  Symptom extraction failed: {e}")
+        return {
+            "symptoms": [], "duration": "unknown",
+            "severity_words": [], "temperature": "not mentioned",
+            "location": "not mentioned", "onset": "unknown",
+            "age": "not mentioned", "existing_conditions": [],
+            "worsening": "unknown"
+        }
+
+
+def _format_symptom_context(sx: dict) -> str:
+    """Format extracted symptoms as a readable summary for the disease chain."""
+    lines = [
+        f"Symptoms     : {', '.join(sx.get('symptoms', [])) or 'not specified'}",
+        f"Duration     : {sx.get('duration', 'unknown')}",
+        f"Temperature  : {sx.get('temperature', 'not mentioned')}",
+        f"Severity     : {', '.join(sx.get('severity_words', [])) or 'not specified'}",
+        f"Location     : {sx.get('location', 'not mentioned')}",
+        f"Onset        : {sx.get('onset', 'unknown')}",
+        f"Age          : {sx.get('age', 'not mentioned')}",
+        f"Conditions   : {', '.join(sx.get('existing_conditions', [])) or 'none mentioned'}",
+        f"Worsening    : {sx.get('worsening', 'unknown')}",
+    ]
+    return "\n".join(lines)
+
+
+def run_pipeline(query: str, user_id: str = None, session_id: str = None) -> dict:
+    """
+    Full pipeline — 5 steps:
+
+    Step 0 — Symptom extraction: parse structured fields from raw query
+    Step 1 — RAG disease chain: retrieve + identify with structured context
+    Step 2 — Fallback disease chain: pure LLM reasoning if RAG returns 'general'
+    Step 3 — Nutrition chain: runs SILENTLY — stored in DB for friend's food system
+    Step 4 — Severity: structured context (age, duration, worsening) passed in
+    Step 5 — Home care chain: exercise/rest/monitoring table shown to user
+             (skipped for CRITICAL / URGENT — emergency modal takes over)
+    """
+
+    # ── Step 0: Extract structured symptoms ─────────────────────────────────
+    print("🔬 Step 0: Extracting structured symptoms…")
+    sx             = _extract_symptoms(query)
+    symptom_ctx    = _format_symptom_context(sx)
+    print(f"   Symptoms: {sx.get('symptoms')} | Duration: {sx.get('duration')} | Temp: {sx.get('temperature')}")
+
+    # ── Step 1: RAG-grounded disease chain ───────────────────────────────────
+    print("🔍 Step 1: RAG disease identification…")
+    disease_raw        = disease_chain.invoke({
+        "input":           query,
+        "symptom_context": symptom_ctx,
+    })
+    identified_disease = _extract_disease(disease_raw)
+    clean_disease      = re.sub(
+        r"\nIDENTIFIED_DISEASE:.*", "", disease_raw, flags=re.IGNORECASE).strip()
+    print(f"   RAG identified: {identified_disease}")
+
+    # ── Step 2: Fallback — pure LLM reasoning if RAG returned general ────────
+    used_fallback = False
+    if identified_disease.lower() in ("general", "unknown", ""):
+        print("🔄 Step 2: RAG returned general — running LLM fallback…")
+        try:
+            fallback_raw       = fallback_disease_chain.invoke({
+                "query":           query,
+                "symptom_context": symptom_ctx,
+            })
+            fallback_disease   = _extract_disease(fallback_raw)
+            fallback_clean     = re.sub(
+                r"\nIDENTIFIED_DISEASE:.*", "", fallback_raw, flags=re.IGNORECASE).strip()
+
+            if fallback_disease.lower() not in ("general", "unknown", ""):
+                identified_disease = fallback_disease
+                clean_disease      = fallback_clean
+                used_fallback      = True
+                print(f"   Fallback identified: {identified_disease}")
+            else:
+                print("   Fallback also returned general — keeping ask-for-more")
+        except Exception as e:
+            print(f"⚠️  Fallback chain error: {e}")
+
+    # ── Step 3: Nutrition chain — stored in DB + shown temporarily for testing ─
+    nutrition_json = {}
+    nutrition_md   = ""
+    if identified_disease.lower() not in ("general", "unknown", ""):
+        print(f"🥗 Step 3: Nutrition for {identified_disease}…")
+        try:
+            nutrition_md   = nutrition_chain.invoke({
+                "disease":      identified_disease,
+                "disease_info": clean_disease[:600],
+            })
+            nutrition_json = _parse_nutrition_table(nutrition_md, identified_disease)
+            if user_id and session_id:
+                _store_nutrition_targets(user_id, session_id, identified_disease, nutrition_json)
+        except Exception as e:
+            print(f"⚠️  Nutrition chain error: {e}")
+
+    # ── Step 4: Severity — pass structured context ───────────────────────────
+    print("🚦 Step 4: Severity assessment…")
+    severity = _assess_severity(
+        query        = query,
+        disease      = identified_disease,
+        disease_info = clean_disease,
+        symptom_data = sx,
+    )
+    sev_level = severity["severity"]
+
+    # ── Step 5: Home care chain — only for MILD / MODERATE ───────────────────
+    home_care_table = ""
+    if identified_disease.lower() not in ("general", "unknown", "") \
+            and sev_level in ("MILD", "MODERATE", "URGENT"):
+        print(f"🏃 Step 5: Home care plan for {identified_disease} ({sev_level})…")
+        try:
+            home_care_table = home_care_chain.invoke({
+                "disease":      identified_disease,
+                "severity":     sev_level,
+                "disease_info": clean_disease[:500],
+            })
+        except Exception as e:
+            print(f"⚠️  Home care chain error: {e}")
+
+    # ── Build reply shown to user ─────────────────────────────────────────────
+    if identified_disease.lower() in ("general", "unknown", ""):
+        reply = (
+            "_I need a bit more information to give you an accurate assessment. "
+            "Could you share: how long you've had these symptoms, your age, "
+            "and any existing health conditions or medications?_"
+        )
+    else:
+        reply = clean_disease
+        if nutrition_md:
+            reply += f"\n\n**🥗 Daily Nutrition Targets**\n\n{nutrition_md}"
+        if home_care_table:
+            reply += f"\n\n**🏥 Home Management Plan**\n\n{home_care_table}"
+
+    return {
+        "identified_disease": identified_disease,
+        "disease_info":       clean_disease,
+        "home_care":          home_care_table,
+        "nutrition_json":     nutrition_json,   # internal only
+        "reply":              reply,
+        "severity":           severity,
+        "used_fallback":      used_fallback,
+    }
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# VOICE HELPER  (Groq Whisper)
+# ════════════════════════════════════════════════════════════════════════════
+def transcribe_audio(audio_bytes: bytes, mime: str = "audio/webm") -> str:
+    import httpx
+    ext = "webm" if "webm" in mime else ("mp3" if "mp3" in mime else "wav")
+    with tempfile.NamedTemporaryFile(suffix=f".{ext}", delete=False) as tmp:
+        tmp.write(audio_bytes); tmp_path = tmp.name
+    try:
+        with open(tmp_path, "rb") as f:
+            resp = httpx.post(
+                "https://api.groq.com/openai/v1/audio/transcriptions",
+                headers={"Authorization": f"Bearer {GROQ_API_KEY}"},
+                files={"file": (f"audio.{ext}", f, mime)},
+                data={"model": "whisper-large-v3"},
+                timeout=30,
+            )
+        resp.raise_for_status()
+        return resp.json().get("text", "")
+    finally:
+        os.unlink(tmp_path)
+
+# ════════════════════════════════════════════════════════════════════════════
+# IMAGE HELPER — 3-Layer Pipeline
+#
+#  Layer 1 : Tesseract OCR        → raw text extraction from image
+#  Layer 2 : Groq Vision LLM      → understand handwriting + medical context
+#  Layer 3 : RAG cross-check      → validate drug names / dosages via medic_book
+# ════════════════════════════════════════════════════════════════════════════
+
+def _preprocess_image_for_ocr(image_bytes: bytes):
+    """
+    Enhance image quality before feeding to Tesseract.
+    Converts to grayscale, increases contrast, removes noise.
+    Returns a PIL Image object.
+    """
+    from PIL import Image, ImageEnhance, ImageFilter
+    import io
+
+    img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+
+    # ── Upscale small images (Tesseract works best at 300+ DPI) ──
+    w, h = img.size
+    if w < 1000:
+        scale = 1000 / w
+        img   = img.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
+
+    # ── Grayscale ──
+    img = img.convert("L")
+
+    # ── Sharpen edges (helps with handwriting) ──
+    img = img.filter(ImageFilter.SHARPEN)
+    img = img.filter(ImageFilter.SHARPEN)   # double-sharpen for cursive
+
+    # ── Boost contrast ──
+    img = ImageEnhance.Contrast(img).enhance(2.5)
+
+    # ── Slight denoise ──
+    img = img.filter(ImageFilter.MedianFilter(size=3))
+
+    return img
+
+
+def _layer1_tesseract_ocr(image_bytes: bytes) -> str:
+    """
+    Layer 1: Tesseract OCR
+    Extracts raw text — works well for printed prescriptions,
+    partial results for handwriting which Layer 2 will fix.
+    """
+    try:
+        import pytesseract
+        from PIL import Image
+        import io
+
+        img = _preprocess_image_for_ocr(image_bytes)
+
+        # PSM 6 = assume a uniform block of text (good for prescriptions)
+        # OEM 3 = use LSTM neural net engine (most accurate)
+        config = "--oem 3 --psm 6 -l eng"
+        text   = pytesseract.image_to_string(img, config=config).strip()
+
+        if text:
+            print(f"✅ Layer 1 (Tesseract): extracted {len(text)} chars")
+        else:
+            print("⚠️  Layer 1 (Tesseract): no text found, Layer 2 will handle")
+
+        return text
+
+    except ImportError:
+        print("⚠️  pytesseract not installed — skipping Layer 1")
+        return ""
+    except Exception as e:
+        print(f"⚠️  Layer 1 Tesseract error: {e}")
+        return ""
+
+
+def _layer2_groq_vision(image_bytes: bytes, mime: str,
+                         ocr_text: str) -> str:
+    """
+    Layer 2: Groq Vision LLM
+    - Sees the actual image
+    - Gets the OCR text as context to cross-check / fill gaps
+    - Specialised prompt for doctor prescriptions + handwriting
+    """
+    import httpx
+
+    b64 = base64.b64encode(image_bytes).decode()
+
+    ocr_context = (
+        f"\n\nFor reference, an OCR tool extracted this raw text from the image "
+        f"(may have errors especially for handwriting):\n```\n{ocr_text}\n```\n"
+        f"Use this as a hint but trust your own visual reading over OCR errors."
+        if ocr_text else ""
+    )
+
+    vision_prompt = (
+        "You are an expert medical prescription reader with years of experience "
+        "deciphering doctor handwriting.\n\n"
+
+        "Carefully examine this image and extract ALL of the following if present:\n"
+        "1. Patient name and age\n"
+        "2. Doctor name and registration number\n"
+        "3. Date of prescription\n"
+        "4. Diagnosed condition or symptoms\n"
+        "5. Medicines prescribed — for EACH medicine extract:\n"
+        "   - Full medicine name (expand abbreviations, e.g. 'Amox' → 'Amoxicillin')\n"
+        "   - Dosage (mg/ml)\n"
+        "   - Frequency (e.g. twice daily, morning/night)\n"
+        "   - Duration (e.g. 5 days, 1 week)\n"
+        "   - Route (oral/topical/injection)\n"
+        "6. Special instructions (e.g. take with food, avoid dairy)\n"
+        "7. Follow-up date if mentioned\n\n"
+
+        "For handwritten text:\n"
+        "- Common abbreviations: b.d./b.i.d.=twice daily, t.d.s./t.i.d.=three times daily, "
+        "o.d.=once daily, q.i.d.=four times daily, p.r.n.=as needed, "
+        "a.c.=before meals, p.c.=after meals, h.s.=at bedtime, "
+        "stat=immediately, sos=if needed\n"
+        "- If a word is unclear, write your best interpretation followed by [?]\n"
+        "- Never guess a dosage number — if unclear write [illegible]\n\n"
+
+        "Format your response as structured text with clear sections.\n"
+        f"{ocr_context}"
+    )
+
+    # Normalize mime type — browser sometimes sends empty or wrong type
+    if not mime or mime == "application/octet-stream":
+        mime = "image/jpeg"
+    # Groq vision only accepts jpeg/png/webp/gif
+    if mime not in ("image/jpeg", "image/png", "image/webp", "image/gif"):
+        mime = "image/jpeg"
+
+    try:
+        resp = httpx.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={"Authorization": f"Bearer {GROQ_API_KEY}",
+                     "Content-Type": "application/json"},
+            json={
+                "model": "meta-llama/llama-4-scout-17b-16e-instruct",  # latest Groq vision model
+                "messages": [{"role": "user", "content": [
+                    {"type": "image_url",
+                     "image_url": {"url": f"data:{mime};base64,{b64}"}},
+                    {"type": "text", "text": vision_prompt}
+                ]}],
+                "max_tokens": 800,
+            },
+            timeout=45,
+        )
+        resp.raise_for_status()
+        result = resp.json()["choices"][0]["message"]["content"]
+        print(f"✅ Layer 2 (Groq Vision): {len(result)} chars extracted")
+        return result
+    except Exception as e:
+        print(f"❌ Layer 2 Groq Vision error: {e}")
+        # Fallback: return OCR text + note so Layer 3 can still run
+        fallback = ocr_text if ocr_text else "Image could not be analysed by vision model."
+        return f"[Vision model unavailable. OCR result:]\n{fallback}"
+
+
+def _layer3_rag_crosscheck(vision_text: str) -> str:
+    """
+    Layer 3: RAG cross-check via medic_book
+    - Extracts medicine names from Layer 2 output
+    - Validates them against the medical knowledge base
+    - Flags unknown drugs or dangerous combinations
+    - Returns an enriched, validated summary
+    """
+    rag_prompt = ChatPromptTemplate.from_messages([
+        ("system",
+         "You are a clinical pharmacist validating a prescription reading. "
+         "Using the retrieved medical context below, validate and enrich the "
+         "prescription details provided by the user.\n\n"
+         "For each medicine mentioned:\n"
+         "1. Confirm it is a real medicine (flag if not found in context)\n"
+         "2. Verify the dosage is within safe range\n"
+         "3. Note common side effects briefly\n"
+         "4. Note any important food/drug interactions\n"
+         "5. If a medicine name looks like a handwriting error, suggest "
+         "   the most likely correct name\n\n"
+         "Also decode any remaining Latin abbreviations.\n"
+         "End with a clean SUMMARY section listing all medicines with "
+         "confirmed names, dosages and schedule.\n\n"
+         "Context:\n{context}"),
+        ("human", "Prescription reading:\n{input}")
+    ])
+
+    rag_chain = (
+        {
+            "context": itemgetter("input") | retriever_general,
+            "input":   itemgetter("input"),
+        }
+        | rag_prompt
+        | chat_model
+        | StrOutputParser()
+    )
+
+    result = rag_chain.invoke({"input": vision_text})
+    print(f"✅ Layer 3 (RAG cross-check): validation complete")
+    return result
+
+
+def describe_image(image_bytes: bytes, mime: str = "image/jpeg") -> str:
+    """
+    Full 3-layer prescription / medical image analysis pipeline.
+
+    Layer 1 → Tesseract OCR        (raw text, fast, free)
+    Layer 2 → Groq Vision LLM      (handwriting understanding + structure)
+    Layer 3 → RAG cross-check      (drug validation via medic_book)
+
+    For non-prescription images (skin conditions, wounds):
+    Layer 1 produces no text → Layer 2 does visual medical description →
+    Layer 3 validates against medical knowledge base.
+    """
+    print("\n🔬 Starting 3-layer image analysis…")
+
+    # ── Layer 1: Tesseract OCR ───────────────────────────────────────────────
+    ocr_text = _layer1_tesseract_ocr(image_bytes)
+
+    # ── Layer 2: Groq Vision ─────────────────────────────────────────────────
+    vision_text = _layer2_groq_vision(image_bytes, mime, ocr_text)
+
+    # ── Layer 3: RAG cross-check ─────────────────────────────────────────────
+    final_result = _layer3_rag_crosscheck(vision_text)
+
+    return final_result
+
+# ════════════════════════════════════════════════════════════════════════════
+# CULTURAL ADVICE — friend's HuggingFace healthAdvisor microservice integration
+# ════════════════════════════════════════════════════════════════════════════
+#
+# Friend's service expects a flat string of comma-separated key:value pairs:
+#
+#   "Age: 35, Gender: Female, State: West Bengal,
+#    Dietary preference: Non-vegetarian,
+#    Fat: 15%, Carbohydrate: 65%, Protein: 20%,
+#    Fibre: Low, Water: Low, Vitamins: Normal, Minerals: Normal"
+#
+# Returns: { "cultural_adapted_text": "..." }
+# ════════════════════════════════════════════════════════════════════════════
+
+def _status_from_direction(direction: str) -> str:
+    """
+    Map our nutrition_targets direction → friend's Low/Normal/High status.
+    'increase'  → patient should consume more  → currently 'Low'
+    'decrease'  → patient should consume less  → currently 'High'
+    'restrict'  → patient must avoid          → currently 'High'
+    'normal'    → no change                    → 'Normal'
+    """
+    d = (direction or "normal").lower()
+    if d == "increase": return "Low"
+    if d in ("decrease", "restrict"): return "High"
+    return "Normal"
+
+
+def _direction_to_macro_pct(macros_g: dict) -> dict:
+    """
+    Convert gram values from _parse_macro_targets() back into percentages
+    of total daily calories. Friend's prompt expects integer percentages.
+    Carbs: 4 kcal/g | Protein: 4 kcal/g | Fat: 9 kcal/g
+    """
+    carbs_kcal   = macros_g["carbs_g"]   * 4
+    protein_kcal = macros_g["protein_g"] * 4
+    fat_kcal     = macros_g["fat_g"]     * 9
+    total        = carbs_kcal + protein_kcal + fat_kcal
+    if total <= 0:
+        return {"carb_pct": 50, "protein_pct": 20, "fat_pct": 30}
+    return {
+        "carb_pct":    round(carbs_kcal   / total * 100),
+        "protein_pct": round(protein_kcal / total * 100),
+        "fat_pct":     round(fat_kcal     / total * 100),
+    }
+
+
+def _build_advisor_payload(profile: dict, nutrition_json: dict) -> dict:
+    """
+    Build the JSON body sent to friend's POST /advise endpoint.
+    profile: row from user_profile (age, gender, state, diet_preference)
+    nutrition_json: stored direction-based targets
+    """
+    macros_g = _parse_macro_targets(nutrition_json)
+    pcts     = _direction_to_macro_pct(macros_g)
+
+    nutrients = nutrition_json.get("nutrients", {})
+
+    def _status(name: str) -> str:
+        for key, data in nutrients.items():
+            if name in key:
+                return _status_from_direction(data.get("direction", "normal"))
+        return "Normal"
+
+    return {
+        "age":             profile.get("age"),
+        "gender":          profile.get("gender", ""),
+        "state":           profile.get("state", ""),
+        "diet_preference": profile.get("diet_preference", ""),
+        "fat_pct":         pcts["fat_pct"],
+        "carb_pct":        pcts["carb_pct"],
+        "protein_pct":     pcts["protein_pct"],
+        "fibre":           _status("fiber"),
+        "water":           _status("water"),
+        "vitamins":        _status("vitamin"),
+        "minerals":        _status("mineral"),
+    }
+
+
+def _call_friend_advisor(payload: dict, timeout: float = 60.0) -> dict:
+    """
+    POST to friend's microservice. Returns parsed JSON or raises RuntimeError.
+    Times out at 60s — local LLM inference can be slow.
+    """
+    import httpx
+    try:
+        resp = httpx.post(FRIEND_ADVISOR_URL, json=payload, timeout=timeout)
+        resp.raise_for_status()
+        return resp.json()
+    except httpx.ConnectError:
+        raise RuntimeError(
+            f"Cultural advisor service unreachable at {FRIEND_ADVISOR_URL}. "
+            "Make sure your friend's FastAPI service is running."
+        )
+    except httpx.HTTPStatusError as e:
+        raise RuntimeError(f"Advisor service returned {e.response.status_code}: {e.response.text[:200]}")
+    except Exception as e:
+        raise RuntimeError(f"Advisor call failed: {e}")
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# ROUTES
+# ════════════════════════════════════════════════════════════════════════════
+@app.route("/")
+def home():
+    return render_template("index.html")
+
+# ── Text chat (your original /get endpoint, now upgraded) ───────────────────
+@app.route("/get", methods=["POST"])
+def get_bot_response():
+    try:
+        user_id    = get_current_user()
+        user_msg   = request.form.get("msg", "").strip()
+        session_id = request.form.get("session_id") or None
+
+        if not user_msg:
+            return jsonify({"error": "Please enter a message!"}), 400
+
+        sid     = _ensure_session(user_id, session_id)
+        history = _get_msgs(user_id, sid)
+        ctx     = _history_ctx(history)
+        query   = f"{ctx}\nPatient: {user_msg}" if ctx else user_msg
+
+        result  = run_pipeline(query, user_id=user_id, session_id=sid)
+
+        _append_msgs(user_id, sid, [
+            {"role": "user",      "content": user_msg},
+            {"role": "assistant", "content": result["reply"]},
+        ])
+        _update_session_meta(user_id, sid,
+                             result["identified_disease"],
+                             result["severity"]["severity"])
+
+        return jsonify({
+            "session_id":   sid,
+            "disease":      result["identified_disease"],
+            "disease_info": result["disease_info"],
+            "home_care":    result["home_care"],
+            "reply":        result["reply"],
+            "severity":     result["severity"],
+        })
+
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": "Sorry, I'm having trouble. Please try again."}), 500
+
+# ── Voice ────────────────────────────────────────────────────────────────────
+@app.route("/get/voice", methods=["POST"])
+def get_voice_response():
+    try:
+        if "audio" not in request.files:
+            return jsonify({"error": "audio file required"}), 400
+        user_id    = get_current_user()
+        audio_file = request.files["audio"]
+        session_id = request.form.get("session_id") or None
+        mime       = audio_file.mimetype or "audio/webm"
+
+        transcript = transcribe_audio(audio_file.read(), mime)
+        if not transcript.strip():
+            return jsonify({"error": "Could not transcribe audio"}), 422
+
+        sid     = _ensure_session(user_id, session_id)
+        history = _get_msgs(user_id, sid)
+        ctx     = _history_ctx(history)
+        query   = f"{ctx}\nPatient: {transcript}" if ctx else transcript
+        result  = run_pipeline(query, user_id=user_id, session_id=sid)
+        _update_session_meta(user_id, sid,
+                             result["identified_disease"],
+                             result["severity"]["severity"])
+        return jsonify({"session_id": sid, "transcript": transcript, **result})
+
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+# ── Image ────────────────────────────────────────────────────────────────────
+@app.route("/get/image", methods=["POST"])
+def get_image_response():
+    try:
+        if "image" not in request.files:
+            return jsonify({"error": "image file required"}), 400
+        user_id    = get_current_user()
+        image_file = request.files["image"]
+        extra_msg  = request.form.get("message", "").strip()
+        session_id = request.form.get("session_id") or None
+        mime       = image_file.mimetype or "image/jpeg"
+
+        description = describe_image(image_file.read(), mime)
+        combined    = f"{extra_msg}\n\nImage analysis: {description}" if extra_msg else description
+
+        sid     = _ensure_session(user_id, session_id)
+        history = _get_msgs(user_id, sid)
+        ctx     = _history_ctx(history)
+        query   = f"{ctx}\nPatient: {combined}" if ctx else combined
+        result  = run_pipeline(query, user_id=user_id, session_id=sid)
+
+        _append_msgs(user_id, sid, [
+            {"role": "user",      "content": f"[Image] {combined}"},
+            {"role": "assistant", "content": result["reply"]},
+        ])
+        _update_session_meta(user_id, sid,
+                             result["identified_disease"],
+                             result["severity"]["severity"])
+        return jsonify({"session_id": sid, "image_analysis": description, **result})
+
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": f"Image processing failed: {str(e)}"}), 500
+@app.route("/history", methods=["GET"])
+def get_history():
+    user_id    = get_current_user()
+    session_id = request.args.get("session_id")
+
+    with get_db() as conn:
+        if session_id:
+            # Verify session belongs to this user
+            row = conn.execute(
+                "SELECT session_id FROM sessions WHERE session_id=? AND user_id=?",
+                (session_id, user_id)
+            ).fetchone()
+            if not row:
+                return jsonify({"error": "Session not found"}), 404
+            msgs = conn.execute(
+                "SELECT role, content, ts FROM messages WHERE session_id=? ORDER BY id",
+                (session_id,)
+            ).fetchall()
+            return jsonify({
+                "session_id": session_id,
+                "messages":   [{"role": r["role"], "content": r["content"], "ts": r["ts"]}
+                               for r in msgs]
+            })
+
+        # Return summary of all sessions for this user
+        sessions = conn.execute(
+            "SELECT session_id, created_at FROM sessions WHERE user_id=? ORDER BY created_at DESC",
+            (user_id,)
+        ).fetchall()
+
+        summary = []
+        for s in sessions:
+            count = conn.execute(
+                "SELECT COUNT(*) AS c FROM messages WHERE session_id=?",
+                (s["session_id"],)
+            ).fetchone()["c"]
+            first = conn.execute(
+                "SELECT content FROM messages WHERE session_id=? AND role='user' ORDER BY id LIMIT 1",
+                (s["session_id"],)
+            ).fetchone()
+            summary.append({
+                "session_id": s["session_id"],
+                "created_at": s["created_at"],
+                "msg_count":  count,
+                "preview":    (first["content"][:80] if first else ""),
+            })
+    return jsonify({"sessions": summary})
+
+@app.route("/history", methods=["DELETE"])
+def clear_history():
+    user_id    = get_current_user()
+    session_id = request.args.get("session_id")
+    with get_db() as conn:
+        if session_id:
+            conn.execute(
+                "DELETE FROM messages WHERE session_id=? AND user_id=?",
+                (session_id, user_id))
+            conn.execute(
+                "DELETE FROM sessions WHERE session_id=? AND user_id=?",
+                (session_id, user_id))
+            return jsonify({"deleted": session_id})
+        # Delete all sessions + messages for this user
+        conn.execute("DELETE FROM messages WHERE user_id=?", (user_id,))
+        conn.execute("DELETE FROM sessions WHERE user_id=?",  (user_id,))
+    return jsonify({"deleted": "all"})
+
+@app.route("/checkin", methods=["GET"])
+def checkin():
+    """
+    Called on page load for returning users.
+    Returns whether a check-in prompt should be shown,
+    and what the last condition + severity was.
+    Rules:
+      - First time user         → no check-in
+      - Last session < 3 days   → no check-in
+      - Last session ≥ 3 days   → show check-in
+    """
+    user_id = get_current_user()
+    with get_db() as conn:
+        row = conn.execute(
+            """SELECT session_id, created_at, last_disease, last_severity
+               FROM sessions
+               WHERE user_id=? AND last_disease != '' AND last_disease != 'general'
+               ORDER BY created_at DESC LIMIT 1""",
+            (user_id,)
+        ).fetchone()
+
+    if not row:
+        return jsonify({"show": False, "reason": "first_time"})
+
+    last_date_str = row["created_at"]
+    try:
+        last_date = datetime.fromisoformat(last_date_str.replace("Z", "+00:00"))
+        days_ago  = (datetime.now(timezone.utc) - last_date).days
+    except Exception:
+        return jsonify({"show": False, "reason": "date_parse_error"})
+
+    if days_ago < 3:
+        return jsonify({"show": False, "reason": "too_soon", "days_ago": days_ago})
+
+    # Format a friendly date string
+    friendly_date = last_date.strftime("%B %d")   # e.g. "March 08"
+
+    return jsonify({
+        "show":          True,
+        "days_ago":      days_ago,
+        "last_date":     friendly_date,
+        "last_disease":  row["last_disease"],
+        "last_severity": row["last_severity"],
+        "last_session":  row["session_id"],
+        "question":      (
+            f"Welcome back! 👋 Last time you visited on {friendly_date}, "
+            f"you were dealing with **{row['last_disease']}** "
+            f"(severity: {row['last_severity']}).\n\n"
+            f"How are you feeling now compared to then?"
+        )
+    })
+
+
+@app.route("/checkin/reply", methods=["POST"])
+def checkin_reply():
+    """
+    User replies to the check-in question.
+    LLM compares old condition vs new reply and gives a progress assessment.
+    """
+    try:
+        user_id      = get_current_user()
+        user_reply   = request.form.get("reply", "").strip()
+        last_disease = request.form.get("last_disease", "")
+        last_severity= request.form.get("last_severity", "")
+        last_date    = request.form.get("last_date", "")
+        session_id   = request.form.get("session_id") or None
+
+        if not user_reply:
+            return jsonify({"error": "Reply is required"}), 400
+
+        # ── LLM progress assessment ──────────────────────────────────────────
+        progress_prompt = ChatPromptTemplate.from_messages([
+            ("system",
+             "You are a caring medical follow-up assistant. "
+             "A patient is returning after some days. "
+             "Based on their previous condition and how they describe feeling now, "
+             "assess their recovery progress.\n\n"
+             "Classify progress as exactly ONE of:\n"
+             "RECOVERING   — clearly improving, symptoms reduced\n"
+             "STABLE       — no significant change, neither better nor worse\n"
+             "WORSENING    — symptoms are getting worse\n"
+             "NEW_SYMPTOMS — new unrelated symptoms have appeared\n\n"
+             "Respond in EXACTLY this format:\n"
+             "PROGRESS: <RECOVERING|STABLE|WORSENING|NEW_SYMPTOMS>\n"
+             "ASSESSMENT: <2-3 warm, encouraging sentences summarising their progress>\n"
+             "ADVICE: <one actionable sentence — what they should do next>"),
+            ("human",
+             "Previous condition ({last_date}): {last_disease} — severity was {last_severity}\n\n"
+             "Patient says now: {reply}")
+        ])
+
+        progress_chain = progress_prompt | chat_model | StrOutputParser()
+        llm_resp = progress_chain.invoke({
+            "last_date":     last_date,
+            "last_disease":  last_disease,
+            "last_severity": last_severity,
+            "reply":         user_reply,
+        })
+
+        prog_match   = re.search(r"PROGRESS:\s*(\w+)",    llm_resp, re.IGNORECASE)
+        assess_match = re.search(r"ASSESSMENT:\s*(.+?)(?=ADVICE:|$)",
+                                 llm_resp, re.IGNORECASE | re.DOTALL)
+        advice_match = re.search(r"ADVICE:\s*(.+)",       llm_resp, re.IGNORECASE)
+
+        progress   = prog_match.group(1).upper()   if prog_match   else "STABLE"
+        assessment = assess_match.group(1).strip() if assess_match else llm_resp
+        advice     = advice_match.group(1).strip() if advice_match else ""
+
+        # Progress → emoji + color
+        prog_config = {
+            "RECOVERING":   {"icon": "📈", "color": "#00c853",
+                             "label": "Recovering"},
+            "STABLE":       {"icon": "➡️",  "color": "#ffd600",
+                             "label": "Stable"},
+            "WORSENING":    {"icon": "📉", "color": "#ff1744",
+                             "label": "Worsening"},
+            "NEW_SYMPTOMS": {"icon": "🔔", "color": "#ff6d00",
+                             "label": "New Symptoms"},
+        }
+        cfg = prog_config.get(progress, prog_config["STABLE"])
+
+        # Save this check-in as a new session message
+        sid = _ensure_session(user_id, session_id)
+        _append_msgs(user_id, sid, [
+            {"role": "user",      "content": f"[Check-in] {user_reply}"},
+            {"role": "assistant", "content": f"[Progress: {progress}] {assessment} {advice}"},
+        ])
+
+        return jsonify({
+            "session_id": sid,
+            "progress":   progress,
+            "icon":       cfg["icon"],
+            "color":      cfg["color"],
+            "label":      cfg["label"],
+            "assessment": assessment,
+            "advice":     advice,
+        })
+
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
+# ── Nutrition Targets API — for friend's food recommendation system ───────────
+@app.route("/api/nutrition-targets/<target_user_id>", methods=["GET"])
+def get_nutrition_targets(target_user_id: str):
+    """
+    Returns the latest stored nutrition targets for a given user.
+    Called by the external food recommendation system.
+    Optionally filter by ?session_id=<sid> for a specific session.
+    """
+    try:
+        db         = get_db()
+        session_id = request.args.get("session_id")
+
+        if session_id:
+            row = db.execute(
+                "SELECT disease, nutrition_json, created_at FROM nutrition_targets "
+                "WHERE user_id=? AND session_id=? ORDER BY id DESC LIMIT 1",
+                (target_user_id, session_id)
+            ).fetchone()
+        else:
+            row = db.execute(
+                "SELECT disease, nutrition_json, created_at FROM nutrition_targets "
+                "WHERE user_id=? ORDER BY id DESC LIMIT 1",
+                (target_user_id,)
+            ).fetchone()
+
+        if not row:
+            return jsonify({"error": "No nutrition data found for this user"}), 404
+
+        import json as _json
+        return jsonify({
+            "user_id":    target_user_id,
+            "disease":    row["disease"],
+            "created_at": row["created_at"],
+            "targets":    _json.loads(row["nutrition_json"]),
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/food-suggestions", methods=["POST"])
+def food_suggestions():
+    """
+    POST /api/food-suggestions
+    Called by friend's food recommendation system.
+
+    Request JSON:
+    {
+        "user_id":  "<user_id>",          # required
+        "region":   "West Bengal, India", # from browser geolocation reverse-geocode
+        "session_id": "<sid>"             # optional — uses latest if omitted
+    }
+
+    Response JSON:
+    {
+        "disease":       "Influenza",
+        "region":        "West Bengal, India",
+        "daily_targets": { "carbs_g": 188, "protein_g": 94, ... },
+        "meal_plan": {
+            "breakfast": { "target_calories": "...", "items": [...] },
+            "lunch":     { ... },
+            "dinner":    { ... }
+        },
+        "foods_to_avoid":  ["..."],
+        "hydration_note":  "..."
+    }
+    """
+    try:
+        data       = request.get_json(force=True)
+        user_id    = data.get("user_id", "").strip()
+        region     = data.get("region", "India").strip()
+        session_id = data.get("session_id")
+
+        if not user_id:
+            return jsonify({"error": "user_id is required"}), 400
+
+        # ── Fetch latest nutrition targets from DB ───────────────────────────
+        db = get_db()
+        if session_id:
+            row = db.execute(
+                "SELECT disease, nutrition_json FROM nutrition_targets "
+                "WHERE user_id=? AND session_id=? ORDER BY id DESC LIMIT 1",
+                (user_id, session_id)
+            ).fetchone()
+        else:
+            row = db.execute(
+                "SELECT disease, nutrition_json FROM nutrition_targets "
+                "WHERE user_id=? ORDER BY id DESC LIMIT 1",
+                (user_id,)
+            ).fetchone()
+
+        if not row:
+            return jsonify({
+                "error": "No nutrition data found for this user. "
+                         "User must complete a medical chat session first."
+            }), 404
+
+        disease      = row["disease"]
+        nutrition_js = json.loads(row["nutrition_json"])
+
+        # ── Convert direction-based targets → gram values ────────────────────
+        macros       = _parse_macro_targets(nutrition_js)
+        restrictions = _get_restrictions(disease)
+
+        # ── Run food suggestion chain ────────────────────────────────────────
+        raw = food_suggestion_chain.invoke({
+            "disease":    disease,
+            "region":     region,
+            "carbs_g":    macros["carbs_g"],
+            "protein_g":  macros["protein_g"],
+            "fat_g":      macros["fat_g"],
+            "fiber_g":    macros["fiber_g"],
+            "water_l":    macros["water_l"],
+            "restrictions": restrictions,
+        })
+
+        # ── Parse JSON response ──────────────────────────────────────────────
+        clean = re.sub(r"```(?:json)?|```", "", raw).strip()
+        meal_plan = json.loads(clean)
+        return jsonify(meal_plan)
+
+    except json.JSONDecodeError:
+        # LLM returned malformed JSON — return raw text for debugging
+        return jsonify({"error": "Failed to parse meal plan", "raw": raw}), 500
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ── User Profile API (Age / Gender / State / Diet preference) ───────────────
+@app.route("/api/profile", methods=["GET"])
+def get_profile():
+    """Return the current user's saved profile, or {exists: false} if not yet set."""
+    user_id = get_current_user()
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT age, gender, state, diet_preference, updated_at "
+            "FROM user_profile WHERE user_id=?",
+            (user_id,)
+        ).fetchone()
+    if not row:
+        return jsonify({"exists": False})
+    return jsonify({
+        "exists":          True,
+        "age":             row["age"],
+        "gender":          row["gender"],
+        "state":           row["state"],
+        "diet_preference": row["diet_preference"],
+        "updated_at":      row["updated_at"],
+    })
+
+
+@app.route("/api/profile", methods=["POST"])
+def save_profile():
+    """Upsert the current user's profile."""
+    try:
+        user_id = get_current_user()
+        data    = request.get_json(force=True) or {}
+
+        age             = data.get("age")
+        gender          = (data.get("gender") or "").strip()
+        state           = (data.get("state") or "").strip()
+        diet_preference = (data.get("diet_preference") or "").strip()
+
+        if not all([age, gender, state, diet_preference]):
+            return jsonify({"error": "age, gender, state and diet_preference are all required"}), 400
+
+        try:
+            age = int(age)
+        except (TypeError, ValueError):
+            return jsonify({"error": "age must be an integer"}), 400
+        if age < 1 or age > 120:
+            return jsonify({"error": "age out of range"}), 400
+
+        ts = datetime.now(timezone.utc).isoformat()
+        with get_db() as conn:
+            conn.execute("""
+                INSERT INTO user_profile (user_id, age, gender, state, diet_preference, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(user_id) DO UPDATE SET
+                    age             = excluded.age,
+                    gender          = excluded.gender,
+                    state           = excluded.state,
+                    diet_preference = excluded.diet_preference,
+                    updated_at      = excluded.updated_at
+            """, (user_id, age, gender, state, diet_preference, ts))
+
+        return jsonify({"ok": True, "user_id": user_id})
+
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
+# ── Cultural Advice — orchestrates profile + nutrition_targets + friend's API ─
+@app.route("/api/cultural-advice", methods=["POST"])
+def cultural_advice():
+    """
+    POST /api/cultural-advice
+    Body (JSON, optional): { "session_id": "<sid>" }   # uses latest if omitted
+
+    Pipeline:
+      1. Load user_profile (must exist — frontend collects via form first)
+      2. Load latest nutrition_targets for this user (or session_id if given)
+      3. Build flat payload with macros% + nutrient status
+      4. Call friend's FastAPI /advise endpoint
+      5. Return cultural_adapted_text + the payload we sent (for debugging)
+    """
+    try:
+        user_id    = get_current_user()
+        body       = request.get_json(silent=True) or {}
+        session_id = body.get("session_id")
+
+        # ── 1. Profile must exist ───────────────────────────────────────────
+        with get_db() as conn:
+            prow = conn.execute(
+                "SELECT age, gender, state, diet_preference "
+                "FROM user_profile WHERE user_id=?",
+                (user_id,)
+            ).fetchone()
+        if not prow:
+            return jsonify({
+                "error":         "profile_missing",
+                "message":       "Please fill in your profile first (Age, Gender, State, Diet preference).",
+            }), 400
+
+        profile = {
+            "age":             prow["age"],
+            "gender":          prow["gender"],
+            "state":           prow["state"],
+            "diet_preference": prow["diet_preference"],
+        }
+
+        # ── 2. Nutrition targets must exist ─────────────────────────────────
+        with get_db() as conn:
+            if session_id:
+                nrow = conn.execute(
+                    "SELECT disease, nutrition_json FROM nutrition_targets "
+                    "WHERE user_id=? AND session_id=? ORDER BY id DESC LIMIT 1",
+                    (user_id, session_id)
+                ).fetchone()
+            else:
+                nrow = conn.execute(
+                    "SELECT disease, nutrition_json FROM nutrition_targets "
+                    "WHERE user_id=? ORDER BY id DESC LIMIT 1",
+                    (user_id,)
+                ).fetchone()
+
+        if not nrow:
+            return jsonify({
+                "error":   "nutrition_missing",
+                "message": "No diagnosis yet. Describe your symptoms first so I can identify a condition."
+            }), 400
+
+        disease        = nrow["disease"]
+        nutrition_json = json.loads(nrow["nutrition_json"])
+
+        # ── 3. Build payload ─────────────────────────────────────────────────
+        payload = _build_advisor_payload(profile, nutrition_json)
+
+        # ── 4. Call friend's microservice ────────────────────────────────────
+        result = _call_friend_advisor(payload)
+
+        # ── 5. Return result ─────────────────────────────────────────────────
+        cultural_text = result.get("cultural_adapted_text") \
+                     or result.get("text") \
+                     or ""
+
+        return jsonify({
+            "disease":               disease,
+            "cultural_adapted_text": cultural_text,
+            "profile":               profile,
+            "payload_sent":          payload,
+        })
+
+    except RuntimeError as e:
+        # Friend's service is down or returned an error — be specific
+        return jsonify({"error": "advisor_unavailable", "message": str(e)}), 503
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/health")
+def health():
+    return jsonify({"status": "ok"})
+
+# Spring Boot-style actuator path so the gateway's Eureka health probe works
+@app.route("/actuator/health")
+def actuator_health():
+    return jsonify({"status": "UP"})
+
+@app.route("/actuator/info")
+def actuator_info():
+    return jsonify({"app": "chatbot-service", "version": "1.0.0"})
+
+# Register with Eureka so gateway's lb://chatbot-service can route here
+from eureka_register import register as _eureka_register
+_eureka_register()
+
+if __name__ == "__main__":
+    port = int(os.getenv("CHATBOT_PORT", "8086"))
+    app.run(debug=False, host="0.0.0.0", port=port)

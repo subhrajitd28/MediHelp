@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { Component, ElementRef, OnInit, ViewChild, AfterViewChecked } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatCardModule } from '@angular/material/card';
@@ -8,31 +8,41 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
-import { MatChipsModule } from '@angular/material/chips';
-import { MatSelectModule } from '@angular/material/select';
-import { MatTabsModule } from '@angular/material/tabs';
-import { MatBadgeModule } from '@angular/material/badge';
+import { MatTooltipModule } from '@angular/material/tooltip';
+import { MatDialog, MatDialogModule } from '@angular/material/dialog';
+import { MatListModule } from '@angular/material/list';
+import { MatMenuModule } from '@angular/material/menu';
 import {
-  AiChatService,
-  TriageRequest,
-  TriageResponse,
-  DietRequest,
-  DietResponse,
-  ExerciseRequest,
-  ExerciseResponse
-} from '../../core/services/ai-chat.service';
-
-type TabType = 'symptom' | 'diet' | 'exercise';
+  ChatbotService,
+  ChatbotResponse,
+  SeverityInfo,
+  SessionSummary,
+  CheckinPayload,
+  MealPlan
+} from '../../core/services/chatbot.service';
+import { ProfileService } from '../../core/services/profile.service';
+import { AuthService } from '../../core/services/auth.service';
+import { MarkdownPipe } from '../../shared/pipes/markdown.pipe';
+import { SeverityModalComponent } from '../../shared/components/severity-modal/severity-modal.component';
 
 interface ChatMessage {
-  role: 'user' | 'ai';
+  role: 'user' | 'assistant';
   text: string;
-  triageData?: TriageResponse;
-  dietData?: DietResponse;
-  exerciseData?: ExerciseResponse;
+  attachment?: 'voice' | 'image';
+  attachmentUrl?: string;
+  severity?: SeverityInfo;
+  disease?: string;
+  mealPlan?: MealPlan;
+  loadingMealPlan?: boolean;
   timestamp: Date;
 }
 
+/**
+ * Unified conversational chatbot UI — replaces the old tabbed (Symptom / Diet
+ * / Exercise) interface with a single thread that calls the RAG-powered
+ * medihelp-chatbot-service. Supports text, voice (MediaRecorder), image upload,
+ * severity modal for CRITICAL replies, and a sessions sidebar.
+ */
 @Component({
   selector: 'app-ai-chat',
   standalone: true,
@@ -46,195 +56,268 @@ interface ChatMessage {
     MatIconModule,
     MatProgressSpinnerModule,
     MatSnackBarModule,
-    MatChipsModule,
-    MatSelectModule,
-    MatTabsModule,
-    MatBadgeModule
+    MatTooltipModule,
+    MatDialogModule,
+    MatListModule,
+    MatMenuModule,
+    MarkdownPipe
   ],
   templateUrl: './ai-chat.component.html',
   styleUrl: './ai-chat.component.scss'
 })
-export class AiChatComponent {
-  activeTab: TabType = 'symptom';
+export class AiChatComponent implements OnInit, AfterViewChecked {
   messages: ChatMessage[] = [];
   userInput = '';
   loading = false;
+  sessionId: string | undefined;
 
-  // Symptom check optional fields
-  age: number | null = null;
-  gender = '';
+  // Sidebar
+  sessions: SessionSummary[] = [];
+  showSidebar = true;
 
-  // Diet/Exercise condition input
-  conditionsInput = '';
+  // Voice
+  recording = false;
+  private mediaRecorder?: MediaRecorder;
+  private audioChunks: Blob[] = [];
 
-  genderOptions = ['male', 'female', 'other'];
+  // Check-in
+  checkin: CheckinPayload | null = null;
+
+  @ViewChild('chatScroll') private chatScroll!: ElementRef<HTMLDivElement>;
+  @ViewChild('imageInput') private imageInput!: ElementRef<HTMLInputElement>;
+
+  // Cached state pulled from /users/me — used to drive cultural advice region
+  private userState = '';
 
   constructor(
-    private aiChatService: AiChatService,
-    private snackBar: MatSnackBar
+    private chatbot: ChatbotService,
+    private snackBar: MatSnackBar,
+    private dialog: MatDialog,
+    private profile: ProfileService,
+    private auth: AuthService
   ) {}
 
-  switchTab(tab: TabType): void {
-    this.activeTab = tab;
-    this.messages = [];
-    this.userInput = '';
+  ngOnInit(): void {
+    this.loadSessions();
+    this.checkReturningUser();
+    this.profile.getProfile().subscribe({
+      next: (p) => { this.userState = p.state || 'India'; },
+      error: () => { this.userState = 'India'; }
+    });
   }
 
-  send(): void {
-    if (!this.userInput.trim()) return;
+  // Fetches cultural-adapted Indian food suggestions for the diagnosed disease.
+  // Backend uses Groq's food_suggestion_chain — disease + region + macros → meal plan JSON.
+  fetchMealPlan(msg: ChatMessage): void {
+    if (!msg.disease || msg.loadingMealPlan) return;
+    const userId = this.auth.getUserId();
+    if (!userId) return;
+    msg.loadingMealPlan = true;
+    this.chatbot.getFoodSuggestions(userId, this.userState, this.sessionId).subscribe({
+      next: (plan) => {
+        msg.mealPlan = plan;
+        msg.loadingMealPlan = false;
+      },
+      error: (err) => {
+        msg.loadingMealPlan = false;
+        const m = err?.error?.error || 'Could not fetch food suggestions';
+        this.snackBar.open(m, 'Close', { duration: 4000 });
+      }
+    });
+  }
 
-    switch (this.activeTab) {
-      case 'symptom':
-        this.sendSymptomCheck();
-        break;
-      case 'diet':
-        this.sendDietRequest();
-        break;
-      case 'exercise':
-        this.sendExerciseRequest();
-        break;
+  mealEntries(plan: MealPlan): { name: string; items: string[]; cal?: string }[] {
+    return Object.entries(plan.meal_plan || {}).map(([name, m]) => ({
+      name,
+      items: (m as any).items || [],
+      cal: (m as any).target_calories
+    }));
+  }
+
+  ngAfterViewChecked(): void {
+    if (this.chatScroll) {
+      const el = this.chatScroll.nativeElement;
+      el.scrollTop = el.scrollHeight;
     }
   }
 
-  private sendSymptomCheck(): void {
-    const userText = this.userInput.trim();
-    this.addUserMessage(userText);
-
-    const request: TriageRequest = { symptoms: userText };
-    if (this.age) request.age = this.age;
-    if (this.gender) request.gender = this.gender;
-
-    this.loading = true;
+  // ── Text ────────────────────────────────────────────────────────────────
+  sendText(): void {
+    const text = this.userInput.trim();
+    if (!text || this.loading) return;
+    this.pushUser(text);
     this.userInput = '';
+    this.loading = true;
+    this.chatbot.sendText(text, this.sessionId).subscribe({
+      next: (res) => this.handleResponse(res),
+      error: (err) => this.handleError(err)
+    });
+  }
 
-    this.aiChatService.triageSymptoms(request).subscribe({
+  // ── Voice via MediaRecorder ─────────────────────────────────────────────
+  async toggleRecording(): Promise<void> {
+    if (this.recording) {
+      this.mediaRecorder?.stop();
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      this.mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      this.audioChunks = [];
+      this.mediaRecorder.ondataavailable = (e) => this.audioChunks.push(e.data);
+      this.mediaRecorder.onstop = () => {
+        stream.getTracks().forEach(t => t.stop());
+        this.recording = false;
+        const blob = new Blob(this.audioChunks, { type: 'audio/webm' });
+        this.uploadVoice(blob);
+      };
+      this.mediaRecorder.start();
+      this.recording = true;
+    } catch (err) {
+      this.snackBar.open('Microphone access denied', 'Close', { duration: 3000 });
+    }
+  }
+
+  private uploadVoice(blob: Blob): void {
+    this.pushUser('🎙️ Voice message', { attachment: 'voice', attachmentUrl: URL.createObjectURL(blob) });
+    this.loading = true;
+    this.chatbot.sendVoice(blob, this.sessionId).subscribe({
       next: (res) => {
-        this.messages.push({
-          role: 'ai',
-          text: '',
-          triageData: res,
-          timestamp: new Date()
-        });
-        this.loading = false;
+        if (res.transcript) {
+          // Replace placeholder with transcript so user sees what was heard
+          const last = [...this.messages].reverse().find(m => m.role === 'user');
+          if (last) last.text = `🎙️ ${res.transcript}`;
+        }
+        this.handleResponse(res);
       },
-      error: (err) => {
-        this.handleError(err);
+      error: (err) => this.handleError(err)
+    });
+  }
+
+  // ── Image upload ─────────────────────────────────────────────────────────
+  triggerImagePick(): void { this.imageInput.nativeElement.click(); }
+
+  onImagePicked(event: Event): void {
+    const file = (event.target as HTMLInputElement).files?.[0];
+    if (!file) return;
+    this.pushUser(`📷 ${file.name}`, { attachment: 'image', attachmentUrl: URL.createObjectURL(file) });
+    this.loading = true;
+    this.chatbot.sendImage(file, undefined, this.sessionId).subscribe({
+      next: (res) => this.handleResponse(res),
+      error: (err) => this.handleError(err)
+    });
+    (event.target as HTMLInputElement).value = '';
+  }
+
+  // ── Sessions sidebar ─────────────────────────────────────────────────────
+  loadSessions(): void {
+    this.chatbot.listSessions().subscribe({
+      next: (res) => this.sessions = res.sessions,
+      error: () => { /* sidebar stays empty for first-time users */ }
+    });
+  }
+
+  openSession(session: SessionSummary): void {
+    this.sessionId = session.session_id;
+    this.chatbot.loadSession(session.session_id).subscribe({
+      next: (res) => {
+        this.messages = res.messages.map(m => ({
+          role: m.role,
+          text: m.content,
+          timestamp: new Date(m.ts)
+        }));
       }
     });
   }
 
-  private sendDietRequest(): void {
-    const userText = this.userInput.trim();
-    this.addUserMessage(userText);
+  newChat(): void {
+    this.messages = [];
+    this.sessionId = undefined;
+    this.checkin = null;
+  }
 
-    const conditions = this.parseConditions(userText);
-    const request: DietRequest = { conditions };
-
-    this.loading = true;
-    this.userInput = '';
-
-    this.aiChatService.getDietRecommendations(request).subscribe({
-      next: (res) => {
-        this.messages.push({
-          role: 'ai',
-          text: '',
-          dietData: res,
-          timestamp: new Date()
-        });
-        this.loading = false;
-      },
-      error: (err) => {
-        this.handleError(err);
+  deleteSession(session: SessionSummary, event: Event): void {
+    event.stopPropagation();
+    this.chatbot.deleteSession(session.session_id).subscribe({
+      next: () => {
+        this.sessions = this.sessions.filter(s => s.session_id !== session.session_id);
+        if (this.sessionId === session.session_id) this.newChat();
       }
     });
   }
 
-  private sendExerciseRequest(): void {
-    const userText = this.userInput.trim();
-    this.addUserMessage(userText);
-
-    const conditions = this.parseConditions(userText);
-    const request: ExerciseRequest = { conditions };
-
-    this.loading = true;
-    this.userInput = '';
-
-    this.aiChatService.getExerciseRecommendations(request).subscribe({
-      next: (res) => {
-        this.messages.push({
-          role: 'ai',
-          text: '',
-          exerciseData: res,
-          timestamp: new Date()
-        });
-        this.loading = false;
-      },
-      error: (err) => {
-        this.handleError(err);
-      }
+  // ── Returning-user check-in ──────────────────────────────────────────────
+  checkReturningUser(): void {
+    this.chatbot.getCheckin().subscribe({
+      next: (res) => { if (res.show) this.checkin = res; },
+      error: () => { /* first-time user — endpoint may 404 */ }
     });
   }
 
-  private addUserMessage(text: string): void {
+  submitCheckin(reply: string): void {
+    if (!this.checkin || !reply.trim()) return;
+    const payload = this.checkin;
+    this.checkin = null;
+    this.loading = true;
+    this.pushUser(`📝 ${reply}`);
+    this.chatbot.submitCheckinReply(reply, payload, this.sessionId).subscribe({
+      next: (res) => {
+        this.sessionId = res.session_id;
+        this.messages.push({
+          role: 'assistant',
+          text: `${res.icon} **${res.label}**\n\n${res.assessment}\n\n_${res.advice}_`,
+          timestamp: new Date()
+        });
+        this.loading = false;
+        this.loadSessions();
+      },
+      error: (err) => this.handleError(err)
+    });
+  }
+
+  dismissCheckin(): void { this.checkin = null; }
+
+  // ── Internal helpers ─────────────────────────────────────────────────────
+  private pushUser(text: string, extras: Partial<ChatMessage> = {}): void {
+    this.messages.push({ role: 'user', text, timestamp: new Date(), ...extras });
+  }
+
+  private handleResponse(res: ChatbotResponse): void {
+    this.sessionId = res.session_id;
     this.messages.push({
-      role: 'user',
-      text,
+      role: 'assistant',
+      text: res.reply,
+      severity: res.severity,
+      disease: res.disease,
       timestamp: new Date()
     });
-  }
-
-  private parseConditions(text: string): string[] {
-    return text.split(',').map(c => c.trim()).filter(c => c.length > 0);
+    this.loading = false;
+    this.loadSessions();
+    if (res.severity?.show_alert) {
+      this.dialog.open(SeverityModalComponent, {
+        data: res.severity,
+        panelClass: 'critical-dialog',
+        disableClose: false
+      });
+    }
   }
 
   private handleError(err: any): void {
     this.loading = false;
-    const errorMsg = err.error?.detail || err.error?.message || 'Failed to get AI response. Please try again.';
-    this.messages.push({
-      role: 'ai',
-      text: errorMsg,
-      timestamp: new Date()
-    });
-    this.snackBar.open(errorMsg, 'Close', { duration: 5000 });
-  }
-
-  getUrgencyColor(urgency: string): string {
-    switch (urgency?.toUpperCase()) {
-      case 'LOW': return '#4caf50';
-      case 'MEDIUM': return '#ff9800';
-      case 'HIGH': return '#f44336';
-      case 'EMERGENCY': return '#b71c1c';
-      default: return '#9e9e9e';
-    }
-  }
-
-  getUrgencyClass(urgency: string): string {
-    return 'urgency-' + (urgency?.toLowerCase() || 'unknown');
-  }
-
-  getInputPlaceholder(): string {
-    switch (this.activeTab) {
-      case 'symptom':
-        return 'Describe your symptoms...';
-      case 'diet':
-        return 'Enter conditions (comma-separated, e.g. diabetes, hypertension)...';
-      case 'exercise':
-        return 'Enter conditions (comma-separated, e.g. back pain, obesity)...';
-    }
+    const msg = err?.error?.error || err?.error?.message || 'The assistant is unavailable. Please try again.';
+    this.snackBar.open(msg, 'Close', { duration: 5000 });
+    this.messages.push({ role: 'assistant', text: `_Error: ${msg}_`, timestamp: new Date() });
   }
 
   onKeydown(event: KeyboardEvent): void {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
-      this.send();
+      this.sendText();
     }
   }
 
-  getRecommendationTitle(rec: any): string {
-    return rec.name || rec.title || rec.type || 'Recommendation';
-  }
-
-  getRecommendationDescription(rec: any): string {
-    return rec.description || rec.details || rec.summary || JSON.stringify(rec);
+  severityClass(s?: SeverityInfo): string {
+    if (!s) return '';
+    return 'sev-' + s.severity.toLowerCase();
   }
 }

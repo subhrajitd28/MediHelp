@@ -1,201 +1,166 @@
-<div class="ai-chat-container">
-  <h1 class="page-title">AI Health Assistant</h1>
+<div class="chat-shell" [class.no-sidebar]="!showSidebar">
 
-  <!-- Tab Buttons -->
-  <div class="tab-buttons">
-    <button mat-raised-button
-            [color]="activeTab === 'symptom' ? 'primary' : undefined"
-            (click)="switchTab('symptom')">
-      <mat-icon>medical_services</mat-icon>
-      Symptom Check
-    </button>
-    <button mat-raised-button
-            [color]="activeTab === 'diet' ? 'primary' : undefined"
-            (click)="switchTab('diet')">
-      <mat-icon>restaurant</mat-icon>
-      Diet Plan
-    </button>
-    <button mat-raised-button
-            [color]="activeTab === 'exercise' ? 'primary' : undefined"
-            (click)="switchTab('exercise')">
-      <mat-icon>fitness_center</mat-icon>
-      Exercise Plan
-    </button>
-  </div>
-
-  <!-- Optional Fields for Symptom Check -->
-  @if (activeTab === 'symptom') {
-    <div class="optional-fields">
-      <mat-form-field appearance="outline" class="small-field">
-        <mat-label>Age (optional)</mat-label>
-        <input matInput type="number" [(ngModel)]="age" min="1" max="120">
-      </mat-form-field>
-      <mat-form-field appearance="outline" class="small-field">
-        <mat-label>Gender (optional)</mat-label>
-        <mat-select [(ngModel)]="gender">
-          <mat-option value="">-- Select --</mat-option>
-          @for (g of genderOptions; track g) {
-            <mat-option [value]="g">{{ g | titlecase }}</mat-option>
-          }
-        </mat-select>
-      </mat-form-field>
+  <!-- ─── Sidebar: past sessions ──────────────────────────────────── -->
+  <aside class="sidebar" *ngIf="showSidebar">
+    <div class="sidebar-header">
+      <button mat-flat-button color="primary" class="new-chat" (click)="newChat()">
+        <mat-icon>add</mat-icon>
+        New conversation
+      </button>
     </div>
-  }
+    <h3 class="sidebar-title">Recent</h3>
+    <ul class="session-list">
+      <li *ngFor="let s of sessions"
+          [class.active]="s.session_id === sessionId"
+          (click)="openSession(s)">
+        <div class="session-preview">{{ s.preview || 'New conversation' }}</div>
+        <div class="session-meta">{{ s.created_at | date:'MMM d, h:mm a' }} · {{ s.msg_count }} msgs</div>
+        <button mat-icon-button class="delete-btn" (click)="deleteSession(s, $event)" matTooltip="Delete">
+          <mat-icon>delete_outline</mat-icon>
+        </button>
+      </li>
+      <li *ngIf="sessions.length === 0" class="empty">No previous chats.</li>
+    </ul>
+  </aside>
 
-  <!-- Chat Area -->
-  <mat-card class="chat-card">
-    <mat-card-content>
-      <div class="chat-messages" #chatMessages>
-        @if (messages.length === 0 && !loading) {
-          <div class="empty-chat">
-            <mat-icon class="empty-icon">smart_toy</mat-icon>
-            @if (activeTab === 'symptom') {
-              <p>Describe your symptoms and I'll help assess the urgency and suggest next steps.</p>
-            } @else if (activeTab === 'diet') {
-              <p>Enter your health conditions and I'll suggest a personalized diet plan.</p>
-            } @else {
-              <p>Enter your health conditions and I'll recommend suitable exercises.</p>
-            }
-          </div>
-        }
+  <!-- ─── Main chat panel ─────────────────────────────────────────── -->
+  <section class="chat-main">
 
-        @for (msg of messages; track msg.timestamp) {
-          <div class="message" [class.user-message]="msg.role === 'user'" [class.ai-message]="msg.role === 'ai'">
-            @if (msg.role === 'ai') {
-              <mat-icon class="avatar ai-avatar">smart_toy</mat-icon>
-            }
-            <div class="message-bubble">
-              <!-- Plain text message -->
-              @if (msg.text) {
-                <p class="message-text">{{ msg.text }}</p>
-              }
-
-              <!-- Triage Response -->
-              @if (msg.triageData) {
-                <div class="triage-response">
-                  <div class="urgency-badge" [class]="getUrgencyClass(msg.triageData.urgency)">
-                    {{ msg.triageData.urgency | uppercase }}
-                  </div>
-
-                  @if (msg.triageData.possible_conditions && msg.triageData.possible_conditions.length > 0) {
-                    <div class="section">
-                      <strong>Possible Conditions:</strong>
-                      <ul>
-                        @for (condition of msg.triageData.possible_conditions; track condition) {
-                          <li>{{ condition }}</li>
-                        }
-                      </ul>
-                    </div>
-                  }
-
-                  @if (msg.triageData.recommended_actions && msg.triageData.recommended_actions.length > 0) {
-                    <div class="section">
-                      <strong>Recommended Actions:</strong>
-                      <ul>
-                        @for (action of msg.triageData.recommended_actions; track action) {
-                          <li>{{ action }}</li>
-                        }
-                      </ul>
-                    </div>
-                  }
-
-                  @if (msg.triageData.disclaimer) {
-                    <div class="disclaimer">
-                      <mat-icon>info</mat-icon>
-                      <span>{{ msg.triageData.disclaimer }}</span>
-                    </div>
-                  }
-                </div>
-              }
-
-              <!-- Diet Response -->
-              @if (msg.dietData) {
-                <div class="recommendation-response">
-                  @if (msg.dietData.recommendations && msg.dietData.recommendations.length > 0) {
-                    <div class="rec-cards">
-                      @for (rec of msg.dietData.recommendations; track $index) {
-                        <div class="rec-card">
-                          <div class="rec-card-title">
-                            <mat-icon>restaurant</mat-icon>
-                            {{ getRecommendationTitle(rec) }}
-                          </div>
-                          <p class="rec-card-desc">{{ getRecommendationDescription(rec) }}</p>
-                        </div>
-                      }
-                    </div>
-                  } @else {
-                    <p>No specific diet recommendations found.</p>
-                  }
-
-                  @if (msg.dietData.disclaimer) {
-                    <div class="disclaimer">
-                      <mat-icon>info</mat-icon>
-                      <span>{{ msg.dietData.disclaimer }}</span>
-                    </div>
-                  }
-                </div>
-              }
-
-              <!-- Exercise Response -->
-              @if (msg.exerciseData) {
-                <div class="recommendation-response">
-                  @if (msg.exerciseData.recommendations && msg.exerciseData.recommendations.length > 0) {
-                    <div class="rec-cards">
-                      @for (rec of msg.exerciseData.recommendations; track $index) {
-                        <div class="rec-card">
-                          <div class="rec-card-title">
-                            <mat-icon>fitness_center</mat-icon>
-                            {{ getRecommendationTitle(rec) }}
-                          </div>
-                          <p class="rec-card-desc">{{ getRecommendationDescription(rec) }}</p>
-                        </div>
-                      }
-                    </div>
-                  } @else {
-                    <p>No specific exercise recommendations found.</p>
-                  }
-
-                  @if (msg.exerciseData.disclaimer) {
-                    <div class="disclaimer">
-                      <mat-icon>info</mat-icon>
-                      <span>{{ msg.exerciseData.disclaimer }}</span>
-                    </div>
-                  }
-                </div>
-              }
-            </div>
-            @if (msg.role === 'user') {
-              <mat-icon class="avatar user-avatar">person</mat-icon>
-            }
-          </div>
-        }
-
-        @if (loading) {
-          <div class="message ai-message">
-            <mat-icon class="avatar ai-avatar">smart_toy</mat-icon>
-            <div class="message-bubble loading-bubble">
-              <mat-spinner diameter="24"></mat-spinner>
-              <span>Analyzing...</span>
-            </div>
-          </div>
-        }
+    <header class="chat-header">
+      <button mat-icon-button (click)="showSidebar = !showSidebar" matTooltip="Toggle sidebar">
+        <mat-icon>{{ showSidebar ? 'chevron_left' : 'menu' }}</mat-icon>
+      </button>
+      <div class="title">
+        <mat-icon class="title-icon">smart_toy</mat-icon>
+        <div>
+          <h2>Health Assistant</h2>
+          <p>Pre-screening · diet · home-care advice — not a substitute for a doctor</p>
+        </div>
       </div>
-    </mat-card-content>
-  </mat-card>
+    </header>
 
-  <!-- Input Area -->
-  <div class="input-area">
-    <mat-form-field appearance="outline" class="input-field">
-      <mat-label>{{ getInputPlaceholder() }}</mat-label>
-      <input matInput
-             [(ngModel)]="userInput"
-             (keydown)="onKeydown($event)"
-             [disabled]="loading">
-    </mat-form-field>
-    <button mat-fab color="primary"
-            (click)="send()"
-            [disabled]="loading || !userInput.trim()">
-      <mat-icon>send</mat-icon>
-    </button>
-  </div>
+    <!-- Returning-user check-in bubble -->
+    <div *ngIf="checkin" class="checkin-card">
+      <mat-icon class="checkin-icon">notifications_active</mat-icon>
+      <div class="checkin-body">
+        <p>{{ checkin.question }}</p>
+        <div class="checkin-actions">
+          <input #checkinInput placeholder="How are you feeling now?" (keydown.enter)="submitCheckin(checkinInput.value)">
+          <button mat-stroked-button (click)="submitCheckin(checkinInput.value)">Reply</button>
+          <button mat-button (click)="dismissCheckin()">Dismiss</button>
+        </div>
+      </div>
+    </div>
+
+    <div #chatScroll class="chat-scroll">
+      <div *ngIf="messages.length === 0 && !checkin" class="welcome">
+        <mat-icon>health_and_safety</mat-icon>
+        <h3>How can I help today?</h3>
+        <p>Describe your symptoms, upload a prescription, or record a voice note.</p>
+        <div class="suggestions">
+          <button mat-stroked-button (click)="userInput='I have had a fever for 3 days and a sore throat'; sendText()">
+            "I have had a fever for 3 days and a sore throat"
+          </button>
+          <button mat-stroked-button (click)="userInput='What should I eat with high blood pressure?'; sendText()">
+            "What should I eat with high blood pressure?"
+          </button>
+        </div>
+      </div>
+
+      <div *ngFor="let msg of messages" class="message" [class.user]="msg.role === 'user'">
+        <div class="bubble" [ngClass]="severityClass(msg.severity)">
+
+          <div *ngIf="msg.attachment === 'image'" class="thumb">
+            <img [src]="msg.attachmentUrl" alt="uploaded">
+          </div>
+          <audio *ngIf="msg.attachment === 'voice'" controls [src]="msg.attachmentUrl"></audio>
+
+          <div class="content" [innerHTML]="msg.text | markdown"></div>
+
+          <div *ngIf="msg.severity && msg.severity.severity !== 'CRITICAL' && msg.role === 'assistant'"
+               class="severity-bar"
+               [style.background]="msg.severity.alert_color">
+            <span>{{ msg.severity.alert_icon }} {{ msg.severity.alert_title }}</span>
+            <span class="reason" *ngIf="msg.severity.reason">— {{ msg.severity.reason }}</span>
+          </div>
+
+          <!-- Cultural food advice — only shown when there's a diagnosed disease -->
+          <div *ngIf="msg.role === 'assistant' && msg.disease && msg.disease !== 'general' && msg.severity?.severity !== 'CRITICAL'"
+               class="cultural-advice">
+
+            <button *ngIf="!msg.mealPlan && !msg.loadingMealPlan"
+                    mat-stroked-button color="accent"
+                    (click)="fetchMealPlan(msg)"
+                    class="get-food-btn">
+              <mat-icon>restaurant</mat-icon>
+              Get Indian food suggestions for {{ msg.disease }}
+            </button>
+
+            <div *ngIf="msg.loadingMealPlan" class="loading-row">
+              <mat-spinner diameter="18"></mat-spinner>
+              <span>Cooking up a regional meal plan…</span>
+            </div>
+
+            <div *ngIf="msg.mealPlan" class="meal-plan">
+              <h4>🍛 Daily Meal Plan — {{ msg.mealPlan.region }}</h4>
+
+              <div class="meals">
+                <div *ngFor="let m of mealEntries(msg.mealPlan)" class="meal">
+                  <strong>{{ m.name | titlecase }}</strong>
+                  <span class="cal" *ngIf="m.cal">{{ m.cal }}</span>
+                  <ul>
+                    <li *ngFor="let item of m.items">{{ item }}</li>
+                  </ul>
+                </div>
+              </div>
+
+              <div *ngIf="msg.mealPlan.foods_to_avoid?.length" class="avoid">
+                <strong>Avoid:</strong> {{ msg.mealPlan.foods_to_avoid.join(', ') }}
+              </div>
+
+              <p class="hydration" *ngIf="msg.mealPlan.hydration_note">
+                💧 {{ msg.mealPlan.hydration_note }}
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div *ngIf="loading" class="message">
+        <div class="bubble loading">
+          <mat-spinner diameter="20"></mat-spinner>
+          <span>Analysing…</span>
+        </div>
+      </div>
+    </div>
+
+    <footer class="composer">
+      <input #imageInput type="file" accept="image/*" hidden (change)="onImagePicked($event)">
+
+      <button mat-icon-button (click)="triggerImagePick()" matTooltip="Upload prescription / image" [disabled]="loading">
+        <mat-icon>image</mat-icon>
+      </button>
+
+      <button mat-icon-button (click)="toggleRecording()"
+              [matTooltip]="recording ? 'Stop recording' : 'Voice message'"
+              [color]="recording ? 'warn' : ''"
+              [disabled]="loading">
+        <mat-icon>{{ recording ? 'stop_circle' : 'mic' }}</mat-icon>
+      </button>
+
+      <textarea matInput
+                placeholder="Describe your symptoms, ask about diet or home care…"
+                [(ngModel)]="userInput"
+                (keydown)="onKeydown($event)"
+                rows="1"
+                [disabled]="loading"></textarea>
+
+      <button mat-flat-button color="primary"
+              (click)="sendText()"
+              [disabled]="!userInput.trim() || loading">
+        <mat-icon>send</mat-icon>
+      </button>
+    </footer>
+
+  </section>
 </div>

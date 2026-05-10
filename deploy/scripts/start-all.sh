@@ -38,10 +38,11 @@ echo "  Prescription PID: $!"
 java -Xmx256m -jar medihelp-notification-service/target/medihelp-notification-service-1.0.0-SNAPSHOT.jar &> /tmp/notification.log &
 echo "  Notification PID: $!"
 
-# AI Service (Python FastAPI)
-if [ -d "$PROJECT_DIR/medihelp-ai-service/venv" ]; then
-  (cd "$PROJECT_DIR/medihelp-ai-service" && source venv/bin/activate && nohup uvicorn app.main:app --host 0.0.0.0 --port 8000 &> /tmp/ai-service.log &)
-  echo "  AI Service PID: $!"
+# Medical Chatbot Service (Flask + RAG via Pinecone + Groq) - replaces ai-service
+if [ -f "$PROJECT_DIR/medihelp-chatbot-service/app.py" ]; then
+  (cd "$PROJECT_DIR/medihelp-chatbot-service" && set -a && . ./.env 2>/dev/null && set +a \
+    && nohup python3 app.py &> /tmp/chatbot.log &)
+  echo "  Chatbot Service PID: $!"
 fi
 
 echo "[4/4] Waiting (50s)..."
@@ -51,8 +52,8 @@ echo ""
 echo "========================================="
 echo "  Service Health Check"
 echo "========================================="
-declare -A services=([8761]="Eureka" [8080]="Gateway" [8081]="Auth" [8082]="User" [8083]="Health" [8084]="Prescription" [8085]="Notification")
-for port in 8761 8080 8081 8082 8083 8084 8085; do
+declare -A services=([8761]="Eureka" [8080]="Gateway" [8081]="Auth" [8082]="User" [8083]="Health" [8084]="Prescription" [8085]="Notification" [8086]="Chatbot")
+for port in 8761 8080 8081 8082 8083 8084 8085 8086; do
     status=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:$port/actuator/health 2>/dev/null)
     name=${services[$port]}
     if [ "$status" = "200" ]; then echo "  ✓ $name ($port): UP"; else echo "  ✗ $name ($port): DOWN"; fi
