@@ -78,6 +78,59 @@
             }
           </mat-form-field>
 
+          <!-- Cultural / chatbot context — used for severity (age), diet plans, regional food advice -->
+          <h3 class="section-title">Personalisation</h3>
+          <p class="section-hint">Helps the AI assistant give you safer, more relevant advice.</p>
+
+          <div class="form-row">
+            <mat-form-field appearance="outline">
+              <mat-label>Date of Birth</mat-label>
+              <input matInput [matDatepicker]="dobPicker" formControlName="dateOfBirth" [max]="today" readonly>
+              <mat-datepicker-toggle matIconSuffix [for]="dobPicker"></mat-datepicker-toggle>
+              <mat-datepicker #dobPicker startView="multi-year"></mat-datepicker>
+              @if (registerForm.get('dateOfBirth')?.hasError('required') && registerForm.get('dateOfBirth')?.touched) {
+                <mat-error>Date of birth is required</mat-error>
+              }
+            </mat-form-field>
+
+            <mat-form-field appearance="outline">
+              <mat-label>Gender</mat-label>
+              <mat-select formControlName="gender">
+                @for (g of genders; track g) {
+                  <mat-option [value]="g">{{ g }}</mat-option>
+                }
+              </mat-select>
+              @if (registerForm.get('gender')?.hasError('required') && registerForm.get('gender')?.touched) {
+                <mat-error>Gender is required</mat-error>
+              }
+            </mat-form-field>
+          </div>
+
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>State / Union Territory</mat-label>
+            <mat-select formControlName="state">
+              @for (s of states; track s) {
+                <mat-option [value]="s">{{ s }}</mat-option>
+              }
+            </mat-select>
+            <mat-icon matSuffix>location_on</mat-icon>
+            @if (registerForm.get('state')?.hasError('required') && registerForm.get('state')?.touched) {
+              <mat-error>State is required</mat-error>
+            }
+          </mat-form-field>
+
+          <div class="diet-group">
+            <label class="diet-label">Diet Preference</label>
+            <mat-radio-group formControlName="dietPreference" class="diet-radios">
+              @for (d of diets; track d) {
+                <mat-radio-button [value]="d">{{ d }}</mat-radio-button>
+              }
+            </mat-radio-group>
+            @if (registerForm.get('dietPreference')?.hasError('required') && registerForm.get('dietPreference')?.touched) {
+              <mat-error class="diet-error">Diet preference is required</mat-error>
+            }
+          </div>
+
           <button mat-raised-button color="primary" type="submit"
                   class="full-width submit-btn"
                   [disabled]="registerForm.invalid || loading">

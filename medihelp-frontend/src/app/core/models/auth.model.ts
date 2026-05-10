@@ -9,6 +9,12 @@ export interface RegisterRequest {
   firstName: string;
   lastName?: string;
   phone?: string;
+  // Cultural / chatbot context — collected at registration so the chatbot can
+  // give personalised diet, severity (age-aware), and regional food advice
+  dateOfBirth?: string;     // ISO yyyy-MM-dd
+  gender?: string;          // Male | Female | Other
+  state?: string;           // Indian state / UT
+  dietPreference?: string;  // Vegetarian | Non-vegetarian | Vegan | Eggetarian
 }
 
 export interface OtpVerifyRequest {

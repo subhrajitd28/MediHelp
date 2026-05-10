@@ -9,6 +9,7 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.UUID;
 
 @Entity
@@ -47,6 +48,15 @@ public class UserAuth {
     @Column(nullable = false)
     @Builder.Default
     private String role = "USER";
+
+    // Registration-form profile fields, forwarded via UserRegisteredEvent
+    // after OTP verification so user-service can populate UserProfile
+    private String firstName;
+    private String lastName;
+    private LocalDate dateOfBirth;
+    private String gender;
+    private String state;
+    private String dietPreference;
 
     @CreationTimestamp
     private Instant createdAt;

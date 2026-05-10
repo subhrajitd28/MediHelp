@@ -24,6 +24,11 @@ public class UserRegisteredListener {
             profileService.createProfile(
                     UUID.fromString(event.getUserId()),
                     event.getFirstName(),
+                    event.getLastName(),
+                    event.getDateOfBirth(),
+                    event.getGender(),
+                    event.getState(),
+                    event.getDietPreference(),
                     event.getEmail()
             );
             log.info("Default profile created for user {}", event.getUserId());

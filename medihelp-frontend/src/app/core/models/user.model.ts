@@ -1,5 +1,6 @@
 export interface UserProfile {
   id: string;
+  userId?: string;
   email: string;
   firstName: string;
   lastName: string;
@@ -11,6 +12,8 @@ export interface UserProfile {
   bio: string;
   phone: string;
   profilePictureUrl?: string;
+  state?: string;
+  dietPreference?: string;
   createdAt: string;
   updatedAt: string;
 }

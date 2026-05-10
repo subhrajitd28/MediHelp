@@ -60,6 +60,12 @@ public class AuthService {
                 .isVerified(false)
                 .isActive(true)
                 .role("USER")
+                .firstName(request.getFirstName())
+                .lastName(request.getLastName())
+                .dateOfBirth(request.getDateOfBirth())
+                .gender(request.getGender())
+                .state(request.getState())
+                .dietPreference(request.getDietPreference())
                 .build();
 
         userAuthRepository.save(user);
@@ -93,10 +99,17 @@ public class AuthService {
         user.setOtpExpiry(null);
         userAuthRepository.save(user);
 
-        // Publish user registered event
+        // Publish user registered event - user-service listener uses this to
+        // populate UserProfile so the chatbot can read /users/me for cultural context
         UserRegisteredEvent event = UserRegisteredEvent.builder()
                 .userId(user.getId().toString())
                 .email(user.getEmail())
+                .firstName(user.getFirstName())
+                .lastName(user.getLastName())
+                .dateOfBirth(user.getDateOfBirth())
+                .gender(user.getGender())
+                .state(user.getState())
+                .dietPreference(user.getDietPreference())
                 .registeredAt(Instant.now())
                 .build();
 

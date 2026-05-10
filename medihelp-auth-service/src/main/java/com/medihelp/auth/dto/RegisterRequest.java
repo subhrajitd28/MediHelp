@@ -26,4 +26,12 @@ public class RegisterRequest {
     private String firstName;
 
     private String lastName;
+
+    // Cultural / chatbot context — collected on the registration form,
+    // forwarded to user-service via UserRegisteredEvent so UserProfile is
+    // populated atomically when the user is created.
+    private java.time.LocalDate dateOfBirth;
+    private String gender;
+    private String state;
+    private String dietPreference;
 }

@@ -39,6 +39,10 @@ public class UserProfile {
     @Column(length = 500)
     private String bio;
 
+    // Cultural / chatbot context — collected at registration
+    private String state;             // e.g. "West Bengal" - used by chatbot's cultural-advice
+    private String dietPreference;    // Veg | Non-veg | Vegan | Eggetarian
+
     @CreationTimestamp
     private Instant createdAt;
 

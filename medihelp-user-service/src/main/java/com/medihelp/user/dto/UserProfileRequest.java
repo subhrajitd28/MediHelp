@@ -25,4 +25,6 @@ public class UserProfileRequest {
     private String profilePictureUrl;
     @Size(max = 500)
     private String bio;
+    private String state;
+    private String dietPreference;
 }

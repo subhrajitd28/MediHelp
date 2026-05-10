@@ -27,15 +27,32 @@ public class UserProfileService {
 
     @Transactional
     public UserProfileResponse createProfile(UUID userId, String firstName, String email) {
+        return createProfile(userId, firstName, null, null, null, null, null, email);
+    }
+
+    @Transactional
+    public UserProfileResponse createProfile(UUID userId,
+                                             String firstName,
+                                             String lastName,
+                                             java.time.LocalDate dateOfBirth,
+                                             String gender,
+                                             String state,
+                                             String dietPreference,
+                                             String email) {
         if (profileRepository.existsByUserId(userId)) {
             return getProfile(userId);
         }
         UserProfile profile = UserProfile.builder()
                 .userId(userId)
                 .firstName(firstName)
+                .lastName(lastName)
+                .dateOfBirth(dateOfBirth)
+                .gender(gender)
+                .state(state)
+                .dietPreference(dietPreference)
                 .build();
         profile = profileRepository.save(profile);
-        log.info("Created default profile for user {}", userId);
+        log.info("Created profile for user {} (state={}, diet={})", userId, state, dietPreference);
         return toResponse(profile);
     }
 
@@ -53,6 +70,8 @@ public class UserProfileService {
         if (request.getWeight() != null) profile.setWeight(request.getWeight());
         if (request.getProfilePictureUrl() != null) profile.setProfilePictureUrl(request.getProfilePictureUrl());
         if (request.getBio() != null) profile.setBio(request.getBio());
+        if (request.getState() != null) profile.setState(request.getState());
+        if (request.getDietPreference() != null) profile.setDietPreference(request.getDietPreference());
 
         profile = profileRepository.save(profile);
         return toResponse(profile);
@@ -71,6 +90,8 @@ public class UserProfileService {
                 .weight(p.getWeight())
                 .profilePictureUrl(p.getProfilePictureUrl())
                 .bio(p.getBio())
+                .state(p.getState())
+                .dietPreference(p.getDietPreference())
                 .createdAt(p.getCreatedAt())
                 .updatedAt(p.getUpdatedAt())
                 .build();

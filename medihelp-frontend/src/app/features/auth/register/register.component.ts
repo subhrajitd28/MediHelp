@@ -10,7 +10,12 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatStepperModule } from '@angular/material/stepper';
+import { MatSelectModule } from '@angular/material/select';
+import { MatRadioModule } from '@angular/material/radio';
+import { MatDatepickerModule } from '@angular/material/datepicker';
+import { MatNativeDateModule } from '@angular/material/core';
 import { AuthService } from '../../../core/services/auth.service';
+import { INDIA_STATES, DIET_PREFERENCES, GENDERS } from '../../../core/models/india-states';
 
 @Component({
   selector: 'app-register',
@@ -26,7 +31,11 @@ import { AuthService } from '../../../core/services/auth.service';
     MatIconModule,
     MatProgressSpinnerModule,
     MatSnackBarModule,
-    MatStepperModule
+    MatStepperModule,
+    MatSelectModule,
+    MatRadioModule,
+    MatDatepickerModule,
+    MatNativeDateModule
   ],
   templateUrl: './register.component.html',
   styleUrl: './register.component.scss'
@@ -38,6 +47,11 @@ export class RegisterComponent {
   step: 'register' | 'otp' = 'register';
   registeredEmail = '';
   hidePassword = true;
+
+  readonly states = INDIA_STATES;
+  readonly diets = DIET_PREFERENCES;
+  readonly genders = GENDERS;
+  readonly today = new Date();
 
   constructor(
     private fb: FormBuilder,
@@ -51,7 +65,11 @@ export class RegisterComponent {
       email: ['', [Validators.required, Validators.email]],
       phone: [''],
       password: ['', [Validators.required, Validators.minLength(6)]],
-      confirmPassword: ['', [Validators.required]]
+      confirmPassword: ['', [Validators.required]],
+      dateOfBirth: [null, [Validators.required]],
+      gender: ['', [Validators.required]],
+      state: ['', [Validators.required]],
+      dietPreference: ['', [Validators.required]]
     });
 
     this.otpForm = this.fb.group({
@@ -69,7 +87,13 @@ export class RegisterComponent {
     }
 
     this.loading = true;
-    const { confirmPassword, ...registerData } = formValue;
+    const { confirmPassword, dateOfBirth, ...rest } = formValue;
+    // Date object → ISO yyyy-MM-dd for backend LocalDate parsing
+    const dob = dateOfBirth instanceof Date
+      ? dateOfBirth.toISOString().slice(0, 10)
+      : dateOfBirth;
+    const registerData = { ...rest, dateOfBirth: dob };
+
     this.authService.register(registerData).subscribe({
       next: () => {
         this.loading = false;

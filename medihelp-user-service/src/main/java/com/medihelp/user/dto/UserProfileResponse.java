@@ -25,6 +25,8 @@ public class UserProfileResponse {
     private Double weight;
     private String profilePictureUrl;
     private String bio;
+    private String state;
+    private String dietPreference;
     private Instant createdAt;
     private Instant updatedAt;
 }
