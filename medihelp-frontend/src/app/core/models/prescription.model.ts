@@ -47,6 +47,7 @@ export interface AppointmentRequest {
   specialization: string;
   purpose: string;
   scheduledAt: string;
+  type?: string;       // CONSULTATION | FOLLOW_UP | THERAPY | CHECKUP
   notes?: string;
 }
 
@@ -59,6 +60,7 @@ export interface AppointmentResponse {
   purpose: string;
   scheduledAt: string;
   status: string;
+  type?: string;
   notes: string;
   createdAt: string;
 }

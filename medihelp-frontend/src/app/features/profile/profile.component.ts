@@ -14,8 +14,12 @@ import { MatNativeDateModule } from '@angular/material/core';
 import { MatListModule } from '@angular/material/list';
 import { MatDividerModule } from '@angular/material/divider';
 import { MatChipsModule } from '@angular/material/chips';
+import { MatTooltipModule } from '@angular/material/tooltip';
+import { Clipboard } from '@angular/cdk/clipboard';
 import { ProfileService } from '../../core/services/profile.service';
+import { AuthService } from '../../core/services/auth.service';
 import { UserProfile, Allergy, EmergencyContact } from '../../core/models/user.model';
+import { GENDERS, INDIA_STATES, DIET_PREFERENCES } from '../../core/models/india-states';
 
 @Component({
   selector: 'app-profile',
@@ -35,7 +39,8 @@ import { UserProfile, Allergy, EmergencyContact } from '../../core/models/user.m
     MatNativeDateModule,
     MatListModule,
     MatDividerModule,
-    MatChipsModule
+    MatChipsModule,
+    MatTooltipModule
   ],
   templateUrl: './profile.component.html',
   styleUrl: './profile.component.scss'
@@ -52,14 +57,31 @@ export class ProfileComponent implements OnInit {
   showAllergyForm = false;
   showContactForm = false;
 
-  genders = ['MALE', 'FEMALE', 'OTHER', 'PREFER_NOT_TO_SAY'];
-  bloodTypes = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
-  severities = ['MILD', 'MODERATE', 'SEVERE'];
+  // Reuse the same lists the registration form uses so values round-trip consistently.
+  // Earlier mismatch ('MALE' vs 'Male') made Material's mat-select render blank because
+  // the saved value didn't match any option.
+  readonly genders = GENDERS;
+  readonly states = INDIA_STATES;
+  readonly diets = DIET_PREFERENCES;
+  readonly bloodTypes = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
+  readonly severities = ['MILD', 'MODERATE', 'SEVERE'];
+
+  // Exposed in the UI so users can copy their ID to share with family-hub admins.
+  get userId(): string { return this.auth.getUserId() || ''; }
+  shortUserId = '';
+
+  copyUserId(): void {
+    if (!this.userId) return;
+    this.clipboard.copy(this.userId);
+    this.snackBar.open('User ID copied to clipboard.', 'Close', { duration: 2000 });
+  }
 
   constructor(
     private fb: FormBuilder,
     private profileService: ProfileService,
-    private snackBar: MatSnackBar
+    private snackBar: MatSnackBar,
+    private auth: AuthService,
+    private clipboard: Clipboard
   ) {
     this.profileForm = this.fb.group({
       firstName: ['', Validators.required],
@@ -69,6 +91,8 @@ export class ProfileComponent implements OnInit {
       bloodType: [''],
       height: [null],
       weight: [null],
+      state: [''],
+      dietPreference: [''],
       bio: ['']
     });
 
@@ -106,6 +130,8 @@ export class ProfileComponent implements OnInit {
           bloodType: profile.bloodType,
           height: profile.height,
           weight: profile.weight,
+          state: profile.state,
+          dietPreference: profile.dietPreference,
           bio: profile.bio
         });
         this.loading = false;

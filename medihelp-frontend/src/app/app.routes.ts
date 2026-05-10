@@ -84,5 +84,11 @@ export const routes: Routes = [
       import('./features/mood-journal/mood-journal.component').then(m => m.MoodJournalComponent),
     canActivate: [authGuard]
   },
+  {
+    path: 'family',
+    loadComponent: () =>
+      import('./features/family/family.component').then(m => m.FamilyComponent),
+    canActivate: [authGuard]
+  },
   { path: '**', redirectTo: '/' }
 ];

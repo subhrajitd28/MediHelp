@@ -14,6 +14,8 @@ interface CalendarCell {
   date: Date;
   iso: string;
   inMonth: boolean;
+  isToday: boolean;
+  isFuture: boolean;
   entry?: MoodEntry;
 }
 
@@ -62,14 +64,22 @@ const MOOD_COLOR = ['', '#d32f2f', '#f57c00', '#fdd835', '#7cb342', '#43a047'];
       </mat-card>
 
       <mat-card class="calendar-card">
+        <div class="calendar-header">
+          <button mat-icon-button (click)="prevMonth()" matTooltip="Previous month"><mat-icon>chevron_left</mat-icon></button>
+          <h2>{{ monthLabel }}</h2>
+          <button mat-icon-button (click)="nextMonth()" matTooltip="Next month"><mat-icon>chevron_right</mat-icon></button>
+        </div>
         <div class="calendar-grid">
           <div class="day-name" *ngFor="let d of dayNames">{{ d }}</div>
           <div *ngFor="let cell of calendar"
                class="day-cell"
                [class.dim]="!cell.inMonth"
-               [class.today]="isToday(cell.date)"
+               [class.today]="cell.isToday"
+               [class.future]="cell.isFuture"
+               [class.has-entry]="cell.entry"
                [style.background]="cell.entry ? moodColor(cell.entry.mood) + '33' : 'transparent'"
-               [matTooltip]="cell.entry ? tooltipFor(cell) : (cell.iso + ' — no entry')">
+               [matTooltip]="cell.entry ? tooltipFor(cell) : (cell.isFuture ? cell.iso + ' — future' : 'Click to log mood for ' + cell.iso)"
+               (click)="cellClicked(cell)">
             <div class="date-num">{{ cell.date.getDate() }}</div>
             <div class="emoji" *ngIf="cell.entry">{{ moodEmoji(cell.entry.mood) }}</div>
           </div>
@@ -124,6 +134,22 @@ const MOOD_COLOR = ['', '#d32f2f', '#f57c00', '#fdd835', '#7cb342', '#43a047'];
 
     .calendar-card { padding: 16px; }
 
+    .calendar-header {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      margin-bottom: 12px;
+
+      h2 {
+        margin: 0;
+        font-size: 18px;
+        min-width: 200px;
+        text-align: center;
+        color: #3f51b5;
+      }
+    }
+
     .calendar-grid {
       display: grid;
       grid-template-columns: repeat(7, 1fr);
@@ -146,13 +172,22 @@ const MOOD_COLOR = ['', '#d32f2f', '#f57c00', '#fdd835', '#7cb342', '#43a047'];
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      cursor: default;
-      transition: transform 0.1s;
+      cursor: pointer;
+      transition: transform 0.1s, box-shadow 0.1s;
 
-      &.dim { opacity: 0.35; }
-      &.today { border-color: #3f51b5; box-shadow: 0 0 0 2px #3f51b522; }
+      &.dim { opacity: 0.4; }
+      &.today {
+        border-color: #3f51b5;
+        border-width: 2px;
+        box-shadow: 0 0 0 2px #3f51b522;
+      }
+      &.future { cursor: not-allowed; opacity: 0.3; }
+      &.has-entry { font-weight: 600; }
 
-      &:hover { transform: scale(1.04); }
+      &:hover:not(.future) {
+        transform: scale(1.06);
+        box-shadow: 0 2px 8px rgba(63, 81, 181, 0.18);
+      }
     }
 
     .date-num {
@@ -188,6 +223,24 @@ export class MoodJournalComponent implements OnInit {
   exerciseCorrelation: { withExercise: number; withoutExercise: number } | null = null;
   sleepCorrelation: { withSleep: number; withoutSleep: number } | null = null;
 
+  // Currently displayed month/year. Defaults to today's month; arrows navigate.
+  viewMonth = new Date().getMonth();
+  viewYear = new Date().getFullYear();
+
+  prevMonth(): void {
+    if (this.viewMonth === 0) { this.viewMonth = 11; this.viewYear--; }
+    else this.viewMonth--;
+    this.buildCalendar();
+  }
+  nextMonth(): void {
+    if (this.viewMonth === 11) { this.viewMonth = 0; this.viewYear++; }
+    else this.viewMonth++;
+    this.buildCalendar();
+  }
+  get monthLabel(): string {
+    return new Date(this.viewYear, this.viewMonth, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  }
+
   constructor(
     private moodService: MoodService,
     private dialog: MatDialog,
@@ -197,8 +250,9 @@ export class MoodJournalComponent implements OnInit {
   ngOnInit(): void { this.refresh(); }
 
   refresh(): void {
+    // Pull last 90 days so navigating ±2 months still has data without re-fetching
     const from = new Date();
-    from.setDate(from.getDate() - 41);   // 6-week window
+    from.setDate(from.getDate() - 90);
     this.moodService.list(from.toISOString()).subscribe({
       next: (entries) => {
         this.entries = entries;
@@ -211,36 +265,58 @@ export class MoodJournalComponent implements OnInit {
     });
   }
 
+  // Standard month-grid layout: full current month with leading days from the
+  // previous month and trailing days from the next month so every grid is 6×7.
   private buildCalendar(): void {
     const cells: CalendarCell[] = [];
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // Walk back to start of the week 5 weeks ago (so we show 6 full weeks ending today)
-    const start = new Date(today);
-    start.setDate(start.getDate() - 41);
-    while (start.getDay() !== 0) start.setDate(start.getDate() - 1);
+    const firstOfMonth = new Date(this.viewYear, this.viewMonth, 1);
+    const start = new Date(firstOfMonth);
+    start.setDate(1 - firstOfMonth.getDay());   // back to the Sunday on/before the 1st
 
     const byIso = new Map<string, MoodEntry>();
     for (const e of this.entries) {
       if (!e.recordedAt) continue;
-      const iso = new Date(e.recordedAt).toISOString().slice(0, 10);
-      // Keep the latest entry per day
-      byIso.set(iso, e);
+      const iso = this.toIsoLocal(new Date(e.recordedAt));
+      byIso.set(iso, e);   // keep latest entry per day
     }
 
     for (let i = 0; i < 42; i++) {
       const d = new Date(start);
       d.setDate(start.getDate() + i);
-      const iso = d.toISOString().slice(0, 10);
+      const iso = this.toIsoLocal(d);
       cells.push({
         date: new Date(d),
         iso,
-        inMonth: d.getMonth() === today.getMonth(),
+        inMonth: d.getMonth() === this.viewMonth,
+        isToday: d.getTime() === today.getTime(),
+        isFuture: d.getTime() > today.getTime(),
         entry: byIso.get(iso)
       });
     }
     this.calendar = cells;
+  }
+
+  // Local-timezone YYYY-MM-DD — toISOString() converts to UTC and shifts the
+  // day boundary, which puts evening entries on the next day's cell. Using
+  // local components keeps "what I logged today" on today's cell.
+  private toIsoLocal(d: Date): string {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+
+  // Click handler — clicking a past or current day opens the log dialog with
+  // the date pre-filled. Future days show a brief toast and do nothing.
+  cellClicked(cell: CalendarCell): void {
+    if (cell.isFuture) {
+      this.snack.open('Cannot log a mood for a future day.', 'Close', { duration: 2000 });
+      return;
+    }
+    this.openLog(cell.date);
   }
 
   private computeCorrelations(): void {
@@ -260,10 +336,11 @@ export class MoodJournalComponent implements OnInit {
     } : null;
   }
 
-  openLog(): void {
+  openLog(date?: Date): void {
     const ref = this.dialog.open(MoodLogDialogComponent, {
       width: '420px',
-      panelClass: 'mood-dialog'
+      panelClass: 'mood-dialog',
+      data: { date: date || new Date() }
     });
     ref.afterClosed().subscribe((entry?: MoodEntry) => {
       if (!entry) return;
@@ -277,11 +354,6 @@ export class MoodJournalComponent implements OnInit {
         }
       });
     });
-  }
-
-  isToday(d: Date): boolean {
-    const t = new Date();
-    return d.toDateString() === t.toDateString();
   }
 
   moodEmoji(m?: number): string { return MOOD_EMOJI[m ?? 0] || ''; }

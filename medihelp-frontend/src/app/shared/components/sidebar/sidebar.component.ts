@@ -29,6 +29,7 @@ export class SidebarComponent {
     { label: 'Prescriptions', icon: 'description', route: '/prescriptions' },
     { label: 'Health Records', icon: 'folder_shared', route: '/health-records' },
     { label: 'Mood Journal', icon: 'mood', route: '/mood-journal' },
+    { label: 'Family Hub', icon: 'family_restroom', route: '/family' },
     { label: 'Profile', icon: 'person', route: '/profile' },
     { label: 'Notifications', icon: 'notifications', route: '/notifications' }
   ];

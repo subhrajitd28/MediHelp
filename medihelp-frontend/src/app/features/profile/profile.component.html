@@ -1,6 +1,39 @@
 <div class="profile-container">
   <h1 class="page-title">Profile</h1>
 
+  <!-- User ID — needed to add yourself to a Family Hub group, or share medical
+       summaries. The full UUID is opaque, so we render a shortened form with a
+       "copy" button that grabs the full value. -->
+  <mat-card class="user-id-card" *ngIf="userId">
+    <mat-card-content class="user-id-content">
+      <mat-icon class="user-id-icon">badge</mat-icon>
+      <div class="user-id-text">
+        <strong>Your User ID</strong>
+        <code>{{ userId }}</code>
+        <p class="hint">Share this ID to be added to a family member's hub.</p>
+      </div>
+      <button mat-stroked-button (click)="copyUserId()" matTooltip="Copy to clipboard">
+        <mat-icon>content_copy</mat-icon> Copy
+      </button>
+    </mat-card-content>
+  </mat-card>
+
+  <!-- Notifications channel preferences. Push delivery is FCM-bound — backend
+       publishes events but the FCM frontend wiring is the only missing piece. -->
+  <mat-card class="notif-prefs-card">
+    <mat-card-content class="notif-prefs-content">
+      <mat-icon class="notif-icon">notifications_active</mat-icon>
+      <div class="notif-text">
+        <strong>Notification channels</strong>
+        <div class="channel-row">
+          <span class="ok">✓ In-app (active)</span>
+          <span class="ok">✓ Email via Resend (active)</span>
+          <span class="soon">⏳ Browser push — Coming soon (FCM)</span>
+        </div>
+      </div>
+    </mat-card-content>
+  </mat-card>
+
   @if (loading) {
     <div class="loading-container">
       <mat-spinner></mat-spinner>
@@ -38,7 +71,28 @@
               <mat-label>Gender</mat-label>
               <mat-select formControlName="gender">
                 @for (g of genders; track g) {
-                  <mat-option [value]="g">{{ g | titlecase }}</mat-option>
+                  <mat-option [value]="g">{{ g }}</mat-option>
+                }
+              </mat-select>
+            </mat-form-field>
+          </div>
+
+          <!-- Cultural context — drives the chatbot's regional food advice
+               and the severity-escalation rules (e.g. <2 / >70 caps). -->
+          <div class="form-row">
+            <mat-form-field appearance="outline">
+              <mat-label>State / UT</mat-label>
+              <mat-select formControlName="state">
+                @for (s of states; track s) {
+                  <mat-option [value]="s">{{ s }}</mat-option>
+                }
+              </mat-select>
+            </mat-form-field>
+            <mat-form-field appearance="outline">
+              <mat-label>Diet preference</mat-label>
+              <mat-select formControlName="dietPreference">
+                @for (d of diets; track d) {
+                  <mat-option [value]="d">{{ d }}</mat-option>
                 }
               </mat-select>
             </mat-form-field>

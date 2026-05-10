@@ -656,6 +656,59 @@ def _format_symptom_context(sx: dict) -> str:
     return "\n".join(lines)
 
 
+_GREETINGS = {
+    "hi", "hii", "hiii", "hello", "hey", "yo", "hola", "namaste",
+    "good morning", "good afternoon", "good evening", "good night",
+    "morning", "afternoon", "evening", "night",
+    "sup", "what's up", "whats up", "wassup", "hey there", "hi there",
+}
+_THANKS = {
+    "thanks", "thank you", "thx", "ty", "thank u", "tysm",
+    "ok", "okay", "k", "kk", "got it", "alright", "cool", "nice",
+}
+_QUESTIONS = {
+    "how are you", "who are you", "what can you do", "help", "?", "what",
+}
+
+def _last_patient_msg(query: str) -> str:
+    """Pull the most recent 'Patient: ...' line from a possibly multi-turn query."""
+    last = query
+    for line in reversed(query.splitlines()):
+        if line.startswith("Patient:"):
+            last = line[len("Patient:"):].strip()
+            break
+    return last.strip().lower().rstrip("!?.,")
+
+def _smalltalk_reply(text: str) -> str | None:
+    """
+    Return a friendly conversational reply if the input is small-talk, otherwise
+    None (caller proceeds with the full diagnosis pipeline). This avoids burning
+    LLM + RAG calls on 'hii' and prevents the chatbot from inventing a disease
+    when the user is just saying hello.
+    """
+    if not text or len(text) < 2:
+        return ("Hi! I'm your MediHelp pre-screening assistant. "
+                "Tell me what symptoms you're experiencing, or upload a "
+                "prescription image / send a voice note describing how you feel.")
+    if text in _GREETINGS or any(text.startswith(g + " ") for g in _GREETINGS):
+        return ("Hello! 👋 I can help you with **symptom triage**, **diet & home-care advice**, "
+                "**prescription scanning**, and **drug interaction checks**.\n\n"
+                "Try something like: _\"I have a fever and sore throat for 3 days\"_ "
+                "or upload a prescription image.")
+    if text in _THANKS:
+        return ("You're welcome — happy to help. Anything else I should look at? "
+                "I'm here whenever symptoms come up.")
+    if text in _QUESTIONS or text.endswith(" help"):
+        return ("I can:\n"
+                "1. Identify possible conditions from your symptoms (RAG-grounded over a medical PDF library)\n"
+                "2. Give you a 7-nutrient daily target table tailored to that condition\n"
+                "3. Suggest a home-care plan for mild/moderate cases\n"
+                "4. Trigger an emergency alert for life-threatening descriptions\n"
+                "5. Read prescription images, transcribe voice notes, and follow up after 3+ days\n\n"
+                "Just describe what you're feeling, in plain language.")
+    return None
+
+
 def run_pipeline(query: str, user_id: str = None, session_id: str = None) -> dict:
     """
     Full pipeline — 5 steps:
@@ -668,6 +721,31 @@ def run_pipeline(query: str, user_id: str = None, session_id: str = None) -> dic
     Step 5 — Home care chain: exercise/rest/monitoring table shown to user
              (skipped for CRITICAL / URGENT — emergency modal takes over)
     """
+
+    # ── Greeting gate: short-circuit small-talk before invoking RAG/LLM ──────
+    last_msg = _last_patient_msg(query)
+    chit_chat_reply = _smalltalk_reply(last_msg)
+    if chit_chat_reply:
+        print(f"💬 Small-talk detected ({last_msg!r}) — skipping pipeline")
+        return {
+            "identified_disease": "general",
+            "disease_info":       "",
+            "home_care":          "",
+            "nutrition_json":     {},
+            "reply":              chit_chat_reply,
+            "severity": {
+                "severity":      "MILD",
+                "show_alert":    False,
+                "alert_color":   "#00c853",
+                "alert_icon":    "💬",
+                "alert_title":   "Friendly chat",
+                "alert_message": "",
+                "emergency_call": None,
+                "hospital_url":  "",
+                "reason":        "",
+            },
+            "used_fallback":      False,
+        }
 
     # ── Step 0: Extract structured symptoms ─────────────────────────────────
     print("🔬 Step 0: Extracting structured symptoms…")

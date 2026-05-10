@@ -39,6 +39,17 @@
           </div>
           <div class="form-row">
             <mat-form-field appearance="outline">
+              <mat-label>Type</mat-label>
+              <mat-select formControlName="type">
+                <mat-option value="CONSULTATION">Consultation</mat-option>
+                <mat-option value="FOLLOW_UP">Follow-up</mat-option>
+                <mat-option value="THERAPY">Therapy session</mat-option>
+                <mat-option value="CHECKUP">Routine check-up</mat-option>
+              </mat-select>
+            </mat-form-field>
+          </div>
+          <div class="form-row">
+            <mat-form-field appearance="outline">
               <mat-label>Date</mat-label>
               <input matInput [matDatepicker]="datePicker" formControlName="scheduledDate">
               <mat-datepicker-toggle matSuffix [for]="datePicker"></mat-datepicker-toggle>

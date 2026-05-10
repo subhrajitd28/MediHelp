@@ -58,6 +58,7 @@ export class AppointmentsComponent implements OnInit {
       purpose: ['', Validators.required],
       scheduledDate: [null, Validators.required],
       scheduledTime: ['', Validators.required],
+      type: ['CONSULTATION'],
       notes: ['']
     });
   }
@@ -104,6 +105,7 @@ export class AppointmentsComponent implements OnInit {
       specialization: formValue.specialization,
       purpose: formValue.purpose,
       scheduledAt: date.toISOString(),
+      type: formValue.type,
       notes: formValue.notes
     };
 

@@ -1,11 +1,11 @@
-import { Component } from '@angular/core';
+import { Component, Inject, Optional } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
-import { MatDialogRef, MatDialogModule } from '@angular/material/dialog';
+import { MatDialogRef, MatDialogModule, MAT_DIALOG_DATA } from '@angular/material/dialog';
 import { MoodEntry } from '../../core/services/mood.service';
 
 @Component({
@@ -17,7 +17,7 @@ import { MoodEntry } from '../../core/services/mood.service';
   ],
   template: `
     <div class="dialog">
-      <h2>How are you feeling?</h2>
+      <h2>How are you feeling{{ dateLabel ? ' on ' + dateLabel : '' }}?</h2>
       <div class="emojis">
         <button *ngFor="let m of moods" (click)="rating = m"
                 [class.selected]="rating === m"
@@ -88,8 +88,23 @@ export class MoodLogDialogComponent {
   moods = [1, 2, 3, 4, 5];
   rating: number | null = null;
   entry: MoodEntry = { mood: 0 };
+  dateLabel = '';
+  private targetDate?: Date;
 
-  constructor(private ref: MatDialogRef<MoodLogDialogComponent>) {}
+  constructor(
+    private ref: MatDialogRef<MoodLogDialogComponent>,
+    @Optional() @Inject(MAT_DIALOG_DATA) data?: { date?: Date }
+  ) {
+    if (data?.date) {
+      this.targetDate = data.date;
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      const d = new Date(data.date); d.setHours(0, 0, 0, 0);
+      // Only show the label if logging for a non-today date
+      if (d.getTime() !== today.getTime()) {
+        this.dateLabel = data.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      }
+    }
+  }
 
   emoji(m: number): string {
     return ['', '😢', '😞', '😐', '🙂', '😄'][m] || '';
@@ -99,6 +114,8 @@ export class MoodLogDialogComponent {
 
   save(): void {
     if (!this.rating) return;
-    this.ref.close({ ...this.entry, mood: this.rating });
+    const out: MoodEntry = { ...this.entry, mood: this.rating };
+    if (this.targetDate) out.recordedAt = this.targetDate.toISOString();
+    this.ref.close(out);
   }
 }
