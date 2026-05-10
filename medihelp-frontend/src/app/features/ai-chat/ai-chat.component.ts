@@ -87,8 +87,13 @@ export class AiChatComponent implements OnInit, AfterViewChecked {
   @ViewChild('chatScroll') private chatScroll!: ElementRef<HTMLDivElement>;
   @ViewChild('imageInput') private imageInput!: ElementRef<HTMLInputElement>;
 
-  // Cached state pulled from /users/me — used to drive cultural advice region
+  // Cached profile fields pulled from /users/me — drive the chatbot's
+  // cultural-food prompt. State alone isn't enough; without diet preference,
+  // a vegetarian user could get chicken curry suggestions.
   private userState = '';
+  private userDiet  = '';
+  private userGender = '';
+  private userAge: number | undefined;
 
   constructor(
     private chatbot: ChatbotService,
@@ -102,7 +107,17 @@ export class AiChatComponent implements OnInit, AfterViewChecked {
     this.loadSessions();
     this.checkReturningUser();
     this.profile.getProfile().subscribe({
-      next: (p) => { this.userState = p.state || 'India'; },
+      next: (p) => {
+        this.userState  = p.state          || 'India';
+        this.userDiet   = p.dietPreference || '';
+        this.userGender = p.gender         || '';
+        // Compute age from DOB so the prompt can pick age-appropriate textures.
+        if (p.dateOfBirth) {
+          const dob   = new Date(p.dateOfBirth);
+          const years = Math.floor((Date.now() - dob.getTime()) / (1000 * 60 * 60 * 24 * 365.25));
+          if (!isNaN(years) && years > 0 && years < 130) this.userAge = years;
+        }
+      },
       error: () => { this.userState = 'India'; }
     });
   }
@@ -114,7 +129,12 @@ export class AiChatComponent implements OnInit, AfterViewChecked {
     const userId = this.auth.getUserId();
     if (!userId) return;
     msg.loadingMealPlan = true;
-    this.chatbot.getFoodSuggestions(userId, this.userState, this.sessionId).subscribe({
+    this.chatbot.getFoodSuggestions(
+      userId,
+      this.userState,
+      this.sessionId,
+      { dietPreference: this.userDiet, age: this.userAge, gender: this.userGender }
+    ).subscribe({
       next: (plan) => {
         msg.mealPlan = plan;
         msg.loadingMealPlan = false;

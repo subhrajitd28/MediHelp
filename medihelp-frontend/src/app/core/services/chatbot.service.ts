@@ -153,11 +153,22 @@ export class ChatbotService {
     return this.http.post<CheckinReply>(`${this.base}/checkin/reply`, body);
   }
 
-  getFoodSuggestions(userId: string, region: string, sessionId?: string): Observable<MealPlan> {
+  // Full cultural context: state, diet, age, gender. Backend uses these to
+  // pick traditionally regional dishes (TN dosa vs Bengali bhaat) and respect
+  // diet preference strictly (no chicken for a vegetarian user).
+  getFoodSuggestions(
+    userId: string,
+    region: string,
+    sessionId?: string,
+    extras?: { dietPreference?: string; age?: number | string; gender?: string }
+  ): Observable<MealPlan> {
     return this.http.post<MealPlan>(`${this.base}/api/food-suggestions`, {
-      user_id: userId,
+      user_id:         userId,
       region,
-      session_id: sessionId
+      session_id:      sessionId,
+      diet_preference: extras?.dietPreference,
+      age:             extras?.age,
+      gender:          extras?.gender,
     });
   }
 }

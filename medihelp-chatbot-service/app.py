@@ -1601,6 +1601,13 @@ def food_suggestions():
         user_id    = data.get("user_id", "").strip()
         region     = data.get("region", "India").strip()
         session_id = data.get("session_id")
+        # Cultural-context fields — passed through from the Angular frontend's
+        # /users/me payload so the meal plan respects the user's diet rule
+        # (vegetarian users do NOT get chicken curry suggestions) and is age
+        # appropriate (softer textures for elderly, smaller portions for kids).
+        diet_pref  = (data.get("diet_preference") or "Non-vegetarian").strip()
+        age        = data.get("age") or "adult"
+        gender     = (data.get("gender") or "Other").strip()
 
         if not user_id:
             return jsonify({"error": "user_id is required"}), 400
@@ -1649,14 +1656,17 @@ def food_suggestions():
 
         # ── Run food suggestion chain ────────────────────────────────────────
         raw = food_suggestion_chain.invoke({
-            "disease":    disease,
-            "region":     region,
-            "carbs_g":    macros["carbs_g"],
-            "protein_g":  macros["protein_g"],
-            "fat_g":      macros["fat_g"],
-            "fiber_g":    macros["fiber_g"],
-            "water_l":    macros["water_l"],
-            "restrictions": restrictions,
+            "disease":         disease,
+            "region":          region,
+            "diet_preference": diet_pref,
+            "age":             age,
+            "gender":          gender,
+            "carbs_g":         macros["carbs_g"],
+            "protein_g":       macros["protein_g"],
+            "fat_g":           macros["fat_g"],
+            "fiber_g":         macros["fiber_g"],
+            "water_l":         macros["water_l"],
+            "restrictions":    restrictions,
         })
 
         # ── Parse JSON response ──────────────────────────────────────────────
