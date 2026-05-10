@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { RouterModule } from '@angular/router';
 import { MatListModule } from '@angular/material/list';
 import { MatIconModule } from '@angular/material/icon';
+import { SosButtonComponent } from './sos-button.component';
 
 @Component({
   selector: 'app-sidebar',
@@ -11,7 +12,8 @@ import { MatIconModule } from '@angular/material/icon';
     CommonModule,
     RouterModule,
     MatListModule,
-    MatIconModule
+    MatIconModule,
+    SosButtonComponent
   ],
   templateUrl: './sidebar.component.html',
   styleUrl: './sidebar.component.scss'
