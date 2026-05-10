@@ -1,56 +1,173 @@
 <div class="landing">
+
+  <!-- ─── Header ──────────────────────────────────────────────── -->
+  <header class="top-nav">
+    <a class="brand" routerLink="/">
+      <mat-icon class="brand-icon">health_and_safety</mat-icon>
+      <span>MediHelp</span>
+    </a>
+    <div class="nav-actions">
+      <a mat-button routerLink="/login">Sign in</a>
+      <a mat-flat-button color="primary" routerLink="/register">Get started</a>
+    </div>
+  </header>
+
+  <!-- ─── Hero ────────────────────────────────────────────────── -->
   <section class="hero">
-    <h1>MediHelp</h1>
-    <p class="subtitle">Your Personal Health Assistant</p>
-    <p class="tagline">Track vitals, manage medications, get AI-powered health insights — all in one place.</p>
-    <div class="cta-buttons">
-      <a mat-raised-button color="primary" routerLink="/register">Get Started Free</a>
-      <a mat-stroked-button routerLink="/login">Sign In</a>
+    <div class="hero-bg">
+      <span class="blob blob-1"></span>
+      <span class="blob blob-2"></span>
+      <span class="blob blob-3"></span>
+    </div>
+
+    <div class="hero-inner">
+      <div class="hero-text">
+        <span class="badge"><mat-icon>auto_awesome</mat-icon> RAG-powered pre-screening</span>
+        <h1>
+          Your <span class="grad-text">AI-grounded</span>
+          personal health assistant.
+        </h1>
+        <p class="tagline">
+          Diagnose, track, and recover — with a chatbot that <em>cites medical
+          PDFs</em>, not the open internet. Built for India's regional cuisines,
+          diet preferences, and the 30-day rhythm of real recovery.
+        </p>
+        <div class="cta-buttons">
+          <a mat-flat-button color="primary" routerLink="/register" class="cta-primary">
+            <mat-icon>rocket_launch</mat-icon> Get started — it's free
+          </a>
+          <a mat-stroked-button routerLink="/login" class="cta-secondary">
+            <mat-icon>login</mat-icon> Sign in
+          </a>
+        </div>
+        <p class="hint">
+          <mat-icon>info</mat-icon>
+          Pre-screening only — not a substitute for a doctor. Always seek professional care.
+        </p>
+      </div>
+
+      <!-- Animated illustration: pulsing heart + ECG trace + orbit icons -->
+      <div class="hero-art" aria-hidden="true">
+        <div class="orbit">
+          <span class="orbit-dot" style="--i:0"><mat-icon>medication</mat-icon></span>
+          <span class="orbit-dot" style="--i:1"><mat-icon>biotech</mat-icon></span>
+          <span class="orbit-dot" style="--i:2"><mat-icon>thermostat</mat-icon></span>
+          <span class="orbit-dot" style="--i:3"><mat-icon>vaccines</mat-icon></span>
+        </div>
+
+        <div class="heart">
+          <mat-icon>favorite</mat-icon>
+          <span class="pulse-ring"></span>
+          <span class="pulse-ring delay"></span>
+        </div>
+
+        <svg class="ecg" viewBox="0 0 400 60" preserveAspectRatio="none">
+          <path d="M0 30 L80 30 L100 30 L110 10 L120 50 L130 20 L140 30 L200 30 L220 30 L230 5 L240 55 L250 30 L320 30 L340 30 L350 12 L360 48 L370 30 L400 30"
+                fill="none" stroke="url(#g)" stroke-width="2" stroke-linecap="round"/>
+          <defs>
+            <linearGradient id="g" x1="0" x2="1" y1="0" y2="0">
+              <stop offset="0%"  stop-color="#3f51b5"/>
+              <stop offset="50%" stop-color="#e91e63"/>
+              <stop offset="100%" stop-color="#3f51b5"/>
+            </linearGradient>
+          </defs>
+        </svg>
+      </div>
     </div>
   </section>
 
+  <!-- ─── Stats banner ──────────────────────────────────────────── -->
+  <section class="stats">
+    <div *ngFor="let s of stats; let i = index" class="stat" [style.animation-delay.ms]="i * 100">
+      <div class="stat-value">{{ s.value }}</div>
+      <div class="stat-label">{{ s.label }}</div>
+    </div>
+  </section>
+
+  <!-- ─── Features grid ─────────────────────────────────────────── -->
   <section class="features">
-    <h2>Everything you need to manage your health</h2>
+    <header class="section-header">
+      <span class="eyebrow">What you get</span>
+      <h2>Built for <span class="grad-text">your whole care cycle</span> — before, during, and after the doctor.</h2>
+    </header>
+
     <div class="feature-grid">
-      <mat-card>
-        <mat-icon color="primary">monitor_heart</mat-icon>
-        <h3>Vitals Tracking</h3>
-        <p>Monitor heart rate, blood pressure, temperature, SpO2, and more with real-time anomaly detection.</p>
-      </mat-card>
-      <mat-card>
-        <mat-icon color="primary">medication</mat-icon>
-        <h3>Medication Management</h3>
-        <p>Never miss a dose. Auto-scheduled reminders with adherence tracking and drug interaction alerts.</p>
-      </mat-card>
-      <mat-card>
-        <mat-icon color="primary">psychology</mat-icon>
-        <h3>AI Symptom Triage</h3>
-        <p>Describe your symptoms and get instant urgency assessment powered by Google Gemini AI.</p>
-      </mat-card>
-      <mat-card>
-        <mat-icon color="primary">document_scanner</mat-icon>
-        <h3>Prescription OCR</h3>
-        <p>Scan prescriptions with your camera. Auto-extract medications and set up reminders.</p>
-      </mat-card>
-      <mat-card>
-        <mat-icon color="primary">emoji_events</mat-icon>
-        <h3>Health Score</h3>
-        <p>Gamified 0-100 health score with streaks, badges, and daily challenges to keep you motivated.</p>
-      </mat-card>
-      <mat-card>
-        <mat-icon color="primary">emergency</mat-icon>
-        <h3>Emergency SOS</h3>
-        <p>One-tap emergency alert sends your medical summary and location to emergency contacts.</p>
-      </mat-card>
+      <article *ngFor="let f of features; let i = index"
+               class="feature-card"
+               [attr.data-hue]="f.hue"
+               [style.animation-delay.ms]="i * 80">
+        <div class="icon-halo">
+          <mat-icon>{{ f.icon }}</mat-icon>
+        </div>
+        <h3>{{ f.title }}</h3>
+        <p>{{ f.desc }}</p>
+      </article>
     </div>
   </section>
 
-  <section class="tech">
-    <h2>Built with Enterprise-Grade Technology</h2>
-    <p>FHIR R4 compliant health data export | Microservice architecture | End-to-end encryption</p>
+  <!-- ─── How it works ──────────────────────────────────────────── -->
+  <section class="how">
+    <header class="section-header">
+      <span class="eyebrow">How it works</span>
+      <h2>Three small steps. Continuous care.</h2>
+    </header>
+
+    <div class="step-row">
+      <article *ngFor="let s of steps; let i = index"
+               class="step"
+               [style.animation-delay.ms]="i * 150">
+        <div class="step-num">{{ s.n }}</div>
+        <mat-icon class="step-icon">{{ s.icon }}</mat-icon>
+        <h3>{{ s.title }}</h3>
+        <p>{{ s.desc }}</p>
+      </article>
+    </div>
   </section>
 
+  <!-- ─── Trust strip ──────────────────────────────────────────── -->
+  <section class="trust">
+    <div class="trust-item"><mat-icon>verified_user</mat-icon> HL7 FHIR R4 export</div>
+    <div class="trust-item"><mat-icon>lock</mat-icon> AES-256 encrypted journals</div>
+    <div class="trust-item"><mat-icon>hub</mat-icon> Microservice architecture</div>
+    <div class="trust-item"><mat-icon>cloud_off</mat-icon> Self-hosted (no cloud DB lock-in)</div>
+  </section>
+
+  <!-- ─── Final CTA ────────────────────────────────────────────── -->
+  <section class="final-cta">
+    <h2>Ready to start tracking?</h2>
+    <p>Take 60 seconds to set up. Your data stays yours — exportable to any hospital in FHIR R4.</p>
+    <a mat-flat-button color="primary" routerLink="/register" class="cta-primary large">
+      Get started free
+      <mat-icon>arrow_forward</mat-icon>
+    </a>
+  </section>
+
+  <!-- ─── Footer ───────────────────────────────────────────────── -->
   <footer>
-    <p>MediHelp — Built with care for better health outcomes.</p>
+    <div class="foot-grid">
+      <div>
+        <div class="brand small">
+          <mat-icon class="brand-icon">health_and_safety</mat-icon>
+          <span>MediHelp</span>
+        </div>
+        <p class="muted">Personal health, AI-grounded.</p>
+      </div>
+      <div>
+        <h4>Product</h4>
+        <a routerLink="/register">Sign up</a>
+        <a routerLink="/login">Sign in</a>
+      </div>
+      <div>
+        <h4>Tech</h4>
+        <span class="muted">Spring Boot · Angular · Flask</span>
+        <span class="muted">Pinecone · Groq · RabbitMQ</span>
+      </div>
+      <div>
+        <h4>Disclaimer</h4>
+        <span class="muted">Pre-screening only. Not medical advice. Always consult a qualified clinician.</span>
+      </div>
+    </div>
+    <div class="legal">© 2026 MediHelp · Built with care, not as care.</div>
   </footer>
+
 </div>
