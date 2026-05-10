@@ -210,3 +210,40 @@ mat-card {
     text-align: center;
   }
 }
+
+.quick-log-card {
+  margin-bottom: 16px;
+  background: linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%);
+  border: 1px solid #bbdefb;
+}
+.quick-log-form {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.ql-icon {
+  color: #3f51b5;
+  font-size: 28px;
+  width: 28px;
+  height: 28px;
+}
+.ql-label {
+  font-weight: 600;
+  font-size: 15px;
+  color: #1a2533;
+}
+.ql-type    { width: 200px; }
+.ql-value   { width: 140px; }
+.ql-unit    { color: #666; font-size: 12px; }
+.ql-more    { margin-left: auto; }
+
+.quick-log-form mat-form-field {
+  margin-bottom: -1.25em;   /* tighten Material's bottom hint area */
+}
+
+@media (max-width: 720px) {
+  .quick-log-form { gap: 8px; }
+  .ql-type, .ql-value { width: 100%; }
+  .ql-more { margin-left: 0; }
+}
