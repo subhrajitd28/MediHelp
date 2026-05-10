@@ -44,3 +44,11 @@ Thumbs.db
 credentials.json
 serviceAccountKey.json
 *.pem
+
+# ---- Runtime / WSL noise ----
+nohup.out
+*:Zone.Identifier
+medihelp-chatbot-service/chat_history.db
+
+# ---- Vendored reference clones (have their own .git, kept locally as study aids) ----
+Medical_Chatbot/
