@@ -26,6 +26,7 @@ export class SidebarComponent {
     { label: 'Scan Prescription', icon: 'document_scanner', route: '/scan' },
     { label: 'Prescriptions', icon: 'description', route: '/prescriptions' },
     { label: 'Health Records', icon: 'folder_shared', route: '/health-records' },
+    { label: 'Mood Journal', icon: 'mood', route: '/mood-journal' },
     { label: 'Profile', icon: 'person', route: '/profile' },
     { label: 'Notifications', icon: 'notifications', route: '/notifications' }
   ];
