@@ -64,7 +64,7 @@ export class RegisterComponent {
       lastName: [''],
       email: ['', [Validators.required, Validators.email]],
       phone: [''],
-      password: ['', [Validators.required, Validators.minLength(6)]],
+      password: ['', [Validators.required, Validators.minLength(8)]],   // backend requires 8
       confirmPassword: ['', [Validators.required]],
       dateOfBirth: [null, [Validators.required]],
       gender: ['', [Validators.required]],
@@ -103,8 +103,21 @@ export class RegisterComponent {
       },
       error: (err) => {
         this.loading = false;
-        const message = err.error?.message || 'Registration failed. Please try again.';
-        this.snackBar.open(message, 'Close', { duration: 5000 });
+        // Backend's GlobalExceptionHandler returns:
+        //   { status, error, message: "One or more fields are invalid",
+        //     fieldErrors: { password: "...", firstName: "..." } }
+        // The generic `message` is useless on its own — show the per-field
+        // errors so the user knows WHICH field is wrong.
+        const fieldErrors = err.error?.fieldErrors as Record<string, string> | undefined;
+        let display: string;
+        if (fieldErrors && Object.keys(fieldErrors).length > 0) {
+          display = Object.entries(fieldErrors)
+            .map(([f, msg]) => `${f}: ${msg}`)
+            .join(' · ');
+        } else {
+          display = err.error?.message || 'Registration failed. Please try again.';
+        }
+        this.snackBar.open(display, 'Close', { duration: 8000 });
       }
     });
   }
