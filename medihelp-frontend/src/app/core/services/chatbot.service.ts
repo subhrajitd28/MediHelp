@@ -43,6 +43,11 @@ export interface SessionSummary {
 export interface SessionMessages {
   session_id: string;
   messages: { role: 'user' | 'assistant'; content: string; ts: string }[];
+  // Populated when a meal plan was previously generated for this session — the
+  // frontend reattaches it to the most recent assistant message so the
+  // "cultural food advice" card survives across reloads of past conversations.
+  last_disease?: string;
+  meal_plan?: MealPlan;
 }
 
 export interface CheckinPayload {
@@ -66,11 +71,24 @@ export interface CheckinReply {
   advice: string;
 }
 
+export interface MealItem {
+  food: string;
+  quantity_g?: number;
+  carbs_g?: number;
+  protein_g?: number;
+  fat_g?: number;
+  fiber_g?: number;
+  note?: string;
+}
+
 export interface MealPlan {
   disease: string;
   region: string;
   daily_targets: { [k: string]: number };
-  meal_plan: { [meal: string]: { target_calories?: string; items: string[] } };
+  // Each meal's items are objects (food, quantity, macros, note) — NOT plain
+  // strings as the prior model assumed. Rendering as {{ item }} produced
+  // "[object Object]" which looked like template placeholders.
+  meal_plan: { [meal: string]: { target_calories?: string; items: MealItem[] } };
   foods_to_avoid: string[];
   hydration_note: string;
 }

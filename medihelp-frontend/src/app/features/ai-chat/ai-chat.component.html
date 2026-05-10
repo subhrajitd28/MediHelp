@@ -109,7 +109,10 @@
                   <strong>{{ m.name | titlecase }}</strong>
                   <span class="cal" *ngIf="m.cal">{{ m.cal }}</span>
                   <ul>
-                    <li *ngFor="let item of m.items">{{ item }}</li>
+                    <li *ngFor="let item of m.items">
+                      <span class="food">{{ formatMealItem(item) }}</span>
+                      <span class="note" *ngIf="item.note"> — {{ item.note }}</span>
+                    </li>
                   </ul>
                 </div>
               </div>

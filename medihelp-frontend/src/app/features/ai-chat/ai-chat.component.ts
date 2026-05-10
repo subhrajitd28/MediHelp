@@ -18,7 +18,8 @@ import {
   SeverityInfo,
   SessionSummary,
   CheckinPayload,
-  MealPlan
+  MealPlan,
+  MealItem
 } from '../../core/services/chatbot.service';
 import { ProfileService } from '../../core/services/profile.service';
 import { AuthService } from '../../core/services/auth.service';
@@ -126,12 +127,23 @@ export class AiChatComponent implements OnInit, AfterViewChecked {
     });
   }
 
-  mealEntries(plan: MealPlan): { name: string; items: string[]; cal?: string }[] {
+  mealEntries(plan: MealPlan): { name: string; items: MealItem[]; cal?: string }[] {
     return Object.entries(plan.meal_plan || {}).map(([name, m]) => ({
       name,
       items: (m as any).items || [],
       cal: (m as any).target_calories
     }));
+  }
+
+  // Render one meal item as a single line. The LLM emits structured objects
+  // ({food, quantity_g, carbs_g, protein_g, fat_g, note}); collapsing to text
+  // keeps the chat bubble compact while preserving all useful info.
+  formatMealItem(item: MealItem): string {
+    if (!item || typeof item === 'string') return String(item);
+    const parts: string[] = [];
+    if (item.food) parts.push(item.food);
+    if (item.quantity_g) parts.push(`${item.quantity_g}g`);
+    return parts.join(' · ') || JSON.stringify(item);
   }
 
   ngAfterViewChecked(): void {
@@ -226,6 +238,18 @@ export class AiChatComponent implements OnInit, AfterViewChecked {
           text: m.content,
           timestamp: new Date(m.ts)
         }));
+        // Re-attach the diagnosed disease + persisted meal plan to the most
+        // recent assistant bubble so the cultural-food card reappears on
+        // history load (without this, the *ngIf="msg.disease" guard hides it).
+        if (res.last_disease) {
+          for (let i = this.messages.length - 1; i >= 0; i--) {
+            if (this.messages[i].role === 'assistant') {
+              this.messages[i].disease = res.last_disease;
+              if (res.meal_plan) this.messages[i].mealPlan = res.meal_plan;
+              break;
+            }
+          }
+        }
       }
     });
   }

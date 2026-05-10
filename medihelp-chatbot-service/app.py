@@ -1313,9 +1313,12 @@ def get_history():
 
     with get_db() as conn:
         if session_id:
-            # Verify session belongs to this user
+            # Verify session belongs to this user, fetch metadata too so the
+            # frontend can rehydrate the cultural-food card on the latest
+            # assistant message without an extra API roundtrip.
             row = conn.execute(
-                "SELECT session_id FROM sessions WHERE session_id=? AND user_id=?",
+                "SELECT session_id, last_disease, last_severity "
+                "FROM sessions WHERE session_id=? AND user_id=?",
                 (session_id, user_id)
             ).fetchone()
             if not row:
@@ -1324,10 +1327,22 @@ def get_history():
                 "SELECT role, content, ts FROM messages WHERE session_id=? ORDER BY id",
                 (session_id,)
             ).fetchall()
+
+            # If a meal plan was previously generated for this session, return
+            # it so the UI can attach it back to the assistant bubble.
+            meal_row = conn.execute(
+                "SELECT plan_json FROM meal_plans WHERE user_id=? AND session_id=?",
+                (user_id, session_id)
+            ).fetchone()
+            meal_plan = json.loads(meal_row["plan_json"]) if meal_row else None
+
             return jsonify({
-                "session_id": session_id,
-                "messages":   [{"role": r["role"], "content": r["content"], "ts": r["ts"]}
-                               for r in msgs]
+                "session_id":    session_id,
+                "last_disease":  row["last_disease"] or "",
+                "last_severity": row["last_severity"] or "",
+                "messages":      [{"role": r["role"], "content": r["content"], "ts": r["ts"]}
+                                  for r in msgs],
+                **({"meal_plan": meal_plan} if meal_plan else {}),
             })
 
         # Return summary of all sessions for this user
@@ -1614,6 +1629,20 @@ def food_suggestions():
         disease      = row["disease"]
         nutrition_js = json.loads(row["nutrition_json"])
 
+        # ── Cache hit? ───────────────────────────────────────────────────────
+        # Each (user, session) gets one persisted meal plan. Returning the
+        # cached version on subsequent calls means opening a past chat (which
+        # triggers the same endpoint to rehydrate the food card) avoids a
+        # fresh Groq call AND guarantees the same output the user saw before.
+        if session_id:
+            cached = db.execute(
+                "SELECT plan_json FROM meal_plans WHERE user_id=? AND session_id=?",
+                (user_id, session_id)
+            ).fetchone()
+            if cached:
+                print(f"🥗 Cache hit: meal plan for session {session_id}")
+                return jsonify(json.loads(cached["plan_json"]))
+
         # ── Convert direction-based targets → gram values ────────────────────
         macros       = _parse_macro_targets(nutrition_js)
         restrictions = _get_restrictions(disease)
@@ -1633,6 +1662,21 @@ def food_suggestions():
         # ── Parse JSON response ──────────────────────────────────────────────
         clean = re.sub(r"```(?:json)?|```", "", raw).strip()
         meal_plan = json.loads(clean)
+
+        # ── Persist for future history loads ─────────────────────────────────
+        if session_id:
+            try:
+                db.execute(
+                    "INSERT OR REPLACE INTO meal_plans "
+                    "(user_id, session_id, disease, region, plan_json, created_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    (user_id, session_id, disease, region,
+                     json.dumps(meal_plan), datetime.now(timezone.utc).isoformat())
+                )
+                db.commit()
+            except Exception as ex:
+                print(f"⚠️  Could not persist meal plan: {ex}")
+
         return jsonify(meal_plan)
 
     except json.JSONDecodeError:

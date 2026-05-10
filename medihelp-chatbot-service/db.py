@@ -209,11 +209,30 @@ def init_db() -> None:
             )
         """)
 
+        # ── meal_plans ────────────────────────────────────────────────────────
+        # Cached output of /api/food-suggestions so opening a past chat in the
+        # sidebar restores its cultural-food card. Without this the meal plan
+        # only lived in component memory and disappeared on session reload.
+        # Keyed by session_id so different sessions can carry different plans.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS meal_plans (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id     TEXT    NOT NULL,
+                session_id  TEXT    NOT NULL,
+                disease     TEXT    NOT NULL,
+                region      TEXT    NOT NULL,
+                plan_json   TEXT    NOT NULL,
+                created_at  TEXT    NOT NULL,
+                UNIQUE(user_id, session_id)
+            )
+        """)
+
         # ── indexes ───────────────────────────────────────────────────────────
         conn.execute("CREATE INDEX IF NOT EXISTS idx_sessions_user     ON sessions(user_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_messages_session  ON messages(session_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_nutrition_user    ON nutrition_targets(user_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_nutrition_session ON nutrition_targets(session_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_meal_session      ON meal_plans(session_id)")
 
         # ── backward-compat migrations ─────────────────────────────────────────
         # Older DBs may not have last_disease / last_severity columns yet.
@@ -224,4 +243,4 @@ def init_db() -> None:
                 pass  # Column already exists — safe to ignore
 
     print(f"SQLite ready -> {DB_PATH}")
-    print("   Tables: sessions | messages | nutrition_targets | user_profile")
+    print("   Tables: sessions | messages | nutrition_targets | user_profile | meal_plans")
