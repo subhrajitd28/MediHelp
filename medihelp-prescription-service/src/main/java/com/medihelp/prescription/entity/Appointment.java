@@ -41,6 +41,10 @@ public class Appointment {
 
     private String notes;
 
+    // CONSULTATION (default) | FOLLOW_UP | THERAPY | CHECKUP
+    @Builder.Default
+    private String type = "CONSULTATION";
+
     @Builder.Default
     private Boolean reminderSent = false;
 

@@ -12,6 +12,9 @@ import { MatNativeDateModule } from '@angular/material/core';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatTooltipModule } from '@angular/material/tooltip';
+import { HttpClient } from '@angular/common/http';
+import { environment } from '../../../environments/environment';
 import { HealthRecordService, HealthRecordResponse } from '../../core/services/health-record.service';
 
 @Component({
@@ -21,7 +24,7 @@ import { HealthRecordService, HealthRecordResponse } from '../../core/services/h
     CommonModule, ReactiveFormsModule, MatCardModule, MatButtonModule,
     MatIconModule, MatFormFieldModule, MatInputModule, MatSelectModule,
     MatDatepickerModule, MatNativeDateModule, MatChipsModule,
-    MatSnackBarModule, MatProgressSpinnerModule
+    MatSnackBarModule, MatProgressSpinnerModule, MatTooltipModule
   ],
   templateUrl: './health-records.component.html',
   styleUrl: './health-records.component.scss'
@@ -35,11 +38,33 @@ export class HealthRecordsComponent implements OnInit {
   selectedFile: File | null = null;
   categories = ['TEST_REPORT', 'DOCTOR_NOTE', 'PRESCRIPTION', 'IMAGING', 'OTHER'];
   filterCategory = '';
+  exporting = false;
+
+  exportFhir(): void {
+    this.exporting = true;
+    this.http.get(`${environment.apiUrl}/api/v1/health/fhir/export`, { responseType: 'blob' }).subscribe({
+      next: (blob) => {
+        this.exporting = false;
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `medihelp-fhir-${new Date().toISOString().slice(0,10)}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        this.snackBar.open('FHIR R4 bundle downloaded.', 'Close', { duration: 3000 });
+      },
+      error: () => {
+        this.exporting = false;
+        this.snackBar.open('Could not export FHIR bundle.', 'Close', { duration: 3000 });
+      }
+    });
+  }
 
   constructor(
     private recordService: HealthRecordService,
     private fb: FormBuilder,
-    private snackBar: MatSnackBar
+    private snackBar: MatSnackBar,
+    private http: HttpClient
   ) {
     this.form = this.fb.group({
       title: ['', Validators.required],

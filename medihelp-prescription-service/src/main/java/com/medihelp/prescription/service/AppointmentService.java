@@ -24,7 +24,9 @@ public class AppointmentService {
                 .userId(userId).doctorName(request.getDoctorName())
                 .hospital(request.getHospital()).specialization(request.getSpecialization())
                 .purpose(request.getPurpose()).scheduledAt(request.getScheduledAt())
-                .notes(request.getNotes()).build();
+                .notes(request.getNotes())
+                .type(request.getType() != null ? request.getType() : "CONSULTATION")
+                .build();
         return toResponse(appointmentRepository.save(appointment));
     }
 
@@ -48,6 +50,7 @@ public class AppointmentService {
         if (request.getPurpose() != null) a.setPurpose(request.getPurpose());
         if (request.getScheduledAt() != null) a.setScheduledAt(request.getScheduledAt());
         if (request.getNotes() != null) a.setNotes(request.getNotes());
+        if (request.getType() != null) a.setType(request.getType());
         return toResponse(appointmentRepository.save(a));
     }
 
@@ -64,6 +67,6 @@ public class AppointmentService {
                 .id(a.getId()).doctorName(a.getDoctorName()).hospital(a.getHospital())
                 .specialization(a.getSpecialization()).purpose(a.getPurpose())
                 .scheduledAt(a.getScheduledAt()).status(a.getStatus())
-                .notes(a.getNotes()).createdAt(a.getCreatedAt()).build();
+                .notes(a.getNotes()).type(a.getType()).createdAt(a.getCreatedAt()).build();
     }
 }

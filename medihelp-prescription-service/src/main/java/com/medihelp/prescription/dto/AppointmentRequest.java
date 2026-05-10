@@ -19,4 +19,8 @@ public class AppointmentRequest {
     @NotNull(message = "Scheduled time is required")
     private Instant scheduledAt;
     private String notes;
+    // CONSULTATION | FOLLOW_UP | THERAPY | CHECKUP — drives the same reminder
+    // pipeline (RabbitMQ AppointmentReminderEvent) but lets the UI/notifications
+    // distinguish therapy from regular doctor visits.
+    private String type;
 }

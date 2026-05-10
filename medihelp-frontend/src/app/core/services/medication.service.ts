@@ -24,4 +24,18 @@ export class MedicationService {
   getAdherence(): Observable<AdherenceResponse> {
     return this.api.get<AdherenceResponse>(`${this.path}/medications/log/adherence`);
   }
+
+  // OpenFDA-backed drug interaction check.
+  // Backend caches results in DrugInteractionCache to stay within free tier.
+  checkInteractions(drugNames: string[]): Observable<DrugInteraction[]> {
+    return this.api.post<DrugInteraction[]>(`${this.path}/medications/check-interactions`, drugNames);
+  }
+}
+
+export interface DrugInteraction {
+  drugA: string;
+  drugB: string;
+  severity?: string;
+  description?: string;
+  source?: string;
 }

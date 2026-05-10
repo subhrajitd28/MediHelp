@@ -1,10 +1,16 @@
 <div class="health-records">
   <div class="header">
     <h2>Health Records</h2>
-    <button mat-raised-button color="primary" (click)="showForm = !showForm">
-      <mat-icon>{{ showForm ? 'close' : 'upload_file' }}</mat-icon>
-      {{ showForm ? 'Cancel' : 'Upload Record' }}
-    </button>
+    <div class="header-actions">
+      <button mat-stroked-button (click)="exportFhir()" [disabled]="exporting" matTooltip="Industry-standard FHIR R4 JSON — any hospital system reads it">
+        <mat-icon>{{ exporting ? 'hourglass_top' : 'cloud_download' }}</mat-icon>
+        {{ exporting ? 'Exporting…' : 'Export FHIR' }}
+      </button>
+      <button mat-raised-button color="primary" (click)="showForm = !showForm">
+        <mat-icon>{{ showForm ? 'close' : 'upload_file' }}</mat-icon>
+        {{ showForm ? 'Cancel' : 'Upload Record' }}
+      </button>
+    </div>
   </div>
 
   @if (showForm) {

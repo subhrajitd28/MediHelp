@@ -18,5 +18,6 @@ public class AppointmentResponse {
     private Instant scheduledAt;
     private String status;
     private String notes;
+    private String type;
     private Instant createdAt;
 }

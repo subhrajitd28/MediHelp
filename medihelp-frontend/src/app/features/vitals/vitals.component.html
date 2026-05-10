@@ -1,6 +1,18 @@
 <div class="vitals-container">
   <h1 class="page-title">Vitals</h1>
 
+  <!-- Wearable integration teaser — backend already accepts a 'source' field on Vital -->
+  <mat-card class="wearable-card">
+    <mat-card-content class="wearable-content">
+      <mat-icon class="wearable-icon">watch</mat-icon>
+      <div>
+        <strong>Connect Fitbit / Apple Watch / Mi Band</strong>
+        <p>Auto-sync heart rate, SpO2, and steps. The vitals API already accepts a <code>source</code> field — wearable SDK integration is the only missing piece.</p>
+      </div>
+      <button mat-stroked-button disabled>Coming soon</button>
+    </mat-card-content>
+  </mat-card>
+
   <!-- Record Vital Form -->
   <mat-card class="form-card">
     <mat-card-header>

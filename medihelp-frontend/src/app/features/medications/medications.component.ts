@@ -15,7 +15,7 @@ import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatNativeDateModule } from '@angular/material/core';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatDialogModule } from '@angular/material/dialog';
-import { MedicationService } from '../../core/services/medication.service';
+import { MedicationService, DrugInteraction } from '../../core/services/medication.service';
 import { MedicationResponse, AdherenceResponse } from '../../core/models/prescription.model';
 
 @Component({
@@ -49,6 +49,30 @@ export class MedicationsComponent implements OnInit {
   showAddForm = false;
   addForm: FormGroup;
   saving = false;
+  interactions: DrugInteraction[] | null = null;
+  checkingInteractions = false;
+
+  checkInteractions(): void {
+    if (this.medications.length < 2) return;
+    this.checkingInteractions = true;
+    const drugs = this.medications.map(m => (m as any).drugName || (m as any).medicationName).filter(Boolean);
+    this.medicationService.checkInteractions(drugs).subscribe({
+      next: (res) => {
+        this.interactions = res || [];
+        this.checkingInteractions = false;
+        this.snackBar.open(
+          this.interactions.length === 0
+            ? 'No known interactions among your medications.'
+            : `${this.interactions.length} potential interaction(s) found.`,
+          'Close', { duration: 4000 }
+        );
+      },
+      error: () => {
+        this.checkingInteractions = false;
+        this.snackBar.open('Could not check interactions right now.', 'Close', { duration: 4000 });
+      }
+    });
+  }
 
   frequencies = [
     { value: 'ONCE_DAILY', label: 'Once Daily' },
