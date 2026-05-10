@@ -257,13 +257,15 @@ services:
       rabbitmq:
         condition: service_healthy
 
-  ai-service:
-    build: ./medihelp-ai-service
-    container_name: medihelp-ai-service
+  chatbot-service:
+    build: ./medihelp-chatbot-service
+    container_name: medihelp-chatbot-service
     ports:
-      - "8000:8000"
+      - "8086:8086"
     environment:
-      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      PINECONE_API_KEY: ${PINECONE_API_KEY:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      PINECONE_INDEX_NAME: ${PINECONE_INDEX_NAME:-medical-chatbot}
       EUREKA_URL: http://eureka-server:8761/eureka/
     depends_on:
       eureka-server:

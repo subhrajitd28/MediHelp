@@ -13,9 +13,10 @@ case "$SERVICE" in
     health)     tail -100f /tmp/health.log ;;
     prescription) tail -100f /tmp/prescription.log ;;
     notification) tail -100f /tmp/notification.log ;;
+    chatbot)    tail -100f /tmp/chatbot.log ;;
     errors)
         echo "=== Recent Errors Across All Services ==="
-        for log in /tmp/{eureka,gateway,auth,user,health,prescription,notification}.log; do
+        for log in /tmp/{eureka,gateway,auth,user,health,prescription,notification,chatbot}.log; do
             name=$(basename $log .log)
             errors=$(grep -c "ERROR" "$log" 2>/dev/null || echo 0)
             echo "  $name: $errors errors"
@@ -29,11 +30,11 @@ case "$SERVICE" in
         grep "OTP generated" /tmp/auth.log 2>/dev/null | tail -10
         ;;
     all)
-        echo "Available: eureka, gateway, auth, user, health, prescription, notification, errors, otp"
+        echo "Available: eureka, gateway, auth, user, health, prescription, notification, chatbot, errors, otp"
         echo "Usage: ./logs.sh <service>"
         ;;
     *)
         echo "Unknown service: $SERVICE"
-        echo "Available: eureka, gateway, auth, user, health, prescription, notification, errors, otp"
+        echo "Available: eureka, gateway, auth, user, health, prescription, notification, chatbot, errors, otp"
         ;;
 esac

@@ -166,12 +166,14 @@ services:
       rabbitmq:
         condition: service_healthy
 
-  ai-service:
-    image: ${IMAGE_PREFIX:-ghcr.io/medihelp}/medihelp-ai-service:latest
-    container_name: medihelp-ai-service
+  chatbot-service:
+    image: ${IMAGE_PREFIX:-ghcr.io/medihelp}/medihelp-chatbot-service:latest
+    container_name: medihelp-chatbot-service
     restart: always
     environment:
-      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      PINECONE_API_KEY: ${PINECONE_API_KEY:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      PINECONE_INDEX_NAME: ${PINECONE_INDEX_NAME:-medical-chatbot}
       EUREKA_URL: http://eureka-server:8761/eureka/
     depends_on:
       eureka-server:
