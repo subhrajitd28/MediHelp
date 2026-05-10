@@ -1,0 +1,329 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% MediHelp — Demo slide deck (Beamer)
+%% B.Tech Major Project, IIEST Shibpur, 2026
+%% Compile:  pdflatex slides.tex && pdflatex slides.tex
+%% Expects Images/ folder alongside this file (same as thesis.tex).
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\documentclass[aspectratio=169,11pt]{beamer}
+
+\usetheme{metropolis}
+\usepackage{graphicx}
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric, arrows.meta, positioning, fit, calc}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{listings}
+
+% Fallback theme if metropolis is not available on the local distribution.
+% Comment-out the \usetheme{metropolis} above and uncomment this if needed:
+%   \usetheme{Madrid}
+%   \usecolortheme{seahorse}
+
+% Match thesis colour palette
+\definecolor{javafill}{HTML}{E3F2FD}
+\definecolor{javastr}{HTML}{1976D2}
+\definecolor{pyfill}{HTML}{E8F5E9}
+\definecolor{pystr}{HTML}{43A047}
+\definecolor{infrafill}{HTML}{F3E5F5}
+\definecolor{infrastr}{HTML}{7B1FA2}
+\definecolor{extfill}{HTML}{FFF3E0}
+\definecolor{extstr}{HTML}{FF9800}
+
+\tikzset{
+  jbox/.style  ={rectangle, rounded corners, draw=javastr,  fill=javafill,
+                 thick, minimum height=0.7cm, minimum width=1.5cm, align=center,
+                 font=\tiny},
+  pybox/.style ={rectangle, rounded corners, draw=pystr, fill=pyfill,
+                 thick, minimum height=0.7cm, minimum width=1.5cm, align=center,
+                 font=\tiny},
+  infrabox/.style={cylinder, shape border rotate=90, aspect=0.2,
+                 draw=infrastr, fill=infrafill, thick,
+                 minimum height=0.75cm, minimum width=1.2cm, align=center,
+                 font=\tiny},
+  extbox/.style={rectangle, rounded corners, draw=extstr, fill=extfill,
+                 thick, minimum height=0.6cm, minimum width=1.6cm, align=center,
+                 font=\tiny},
+  flow/.style  ={-{Stealth[length=1.5mm]}, thick},
+  evt/.style   ={-{Stealth[length=1.5mm]}, thick, dashed, draw=infrastr},
+}
+
+\title{\textbf{MediHelp}}
+\subtitle{A RAG-Powered Personal Health Assistant\\on a Microservice Backbone}
+\author{Anushka Ghosh \and Shivam Rai \and Ritabrata Bhattacharya \and Debosmita Pal\\
+        Souvik Jha \and Subhrajit Deb \and Aditi Karmakar}
+\institute{Department of Computer Science and Technology\\
+           Indian Institute of Engineering Science and Technology, Shibpur}
+\date{B.Tech Major Project, 2026}
+
+\begin{document}
+
+% ----- 1. TITLE -----
+\begin{frame}
+  \titlepage
+\end{frame}
+
+% ----- 2. PROBLEM -----
+\begin{frame}{What problem are we solving?}
+  \begin{itemize}
+    \item Existing health apps split into two camps:
+      \begin{itemize}
+        \item \textbf{Closed-source consumer apps} (Apple Health, Google Fit) --- proprietary, locked to one OS, no AI advice
+        \item \textbf{Clinical EHRs} (OpenMRS, OpenEMR) --- doctor-facing, not patient-facing
+      \end{itemize}
+    \item Symptom checkers are clinically inaccurate (Semigran 2015 --- BMJ)
+    \item LLMs hallucinate; pure-LLM medical advice is unsafe
+    \item No tool combines: \emph{symptom triage + cultural-food advice + record export + family hub + emergency SOS} for the Indian patient
+  \end{itemize}
+  \vfill
+  \begin{exampleblock}{Thesis goal}
+    Build a multi-user web application that integrates these capabilities,
+    proves they can be built with free-tier resources, and is architecturally
+    sound enough to discuss in a B.Tech viva.
+  \end{exampleblock}
+\end{frame}
+
+% ----- 3. APPROACH -----
+\begin{frame}{Our approach}
+  \begin{columns}[T]
+    \column{0.55\textwidth}
+    \textbf{Architectural} choices:
+    \begin{itemize}
+      \item 8 microservices (Java + Python), Eureka registry
+      \item \alert{JWT validated only at gateway} --- downstream services read trusted \texttt{X-User-Id} header
+      \item Two communication channels only: sync HTTP via gateway, async events via RabbitMQ
+      \item One Postgres per service (DB isolation)
+    \end{itemize}
+    \column{0.45\textwidth}
+    \textbf{AI safety} mechanisms:
+    \begin{itemize}
+      \item RAG over 5,775 chunks (Pinecone) grounds the LLM
+      \item Pure-LLM fallback only if RAG returns ``general''
+      \item \alert{3-layer severity classifier} --- worst-of-three
+      \item Smalltalk gate to avoid LLM cost on greetings
+      \item Drug-interaction safety net via OpenFDA
+    \end{itemize}
+  \end{columns}
+\end{frame}
+
+% ----- 4. SYSTEM ARCHITECTURE -----
+\begin{frame}{System architecture}
+  \centering
+  \resizebox{\linewidth}{!}{%
+  \begin{tikzpicture}[node distance=0.35cm and 0.35cm]
+    \node[jbox, fill=white, draw=black] (br) {Angular SPA};
+    \node[jbox, below=0.8cm of br, minimum width=3.5cm] (gw)
+          {API Gateway~:8080\\\tiny JWT $\rightarrow$ X-User-Id};
+    \node[jbox, right=1.5cm of gw] (eu) {Eureka};
+    \node[jbox, below=0.9cm of gw, xshift=-5.0cm] (auth) {Auth};
+    \node[jbox, right=of auth] (user) {User};
+    \node[jbox, right=of user] (health) {Health};
+    \node[jbox, right=of health] (pres) {Pres-\\cription};
+    \node[jbox, right=of pres] (notif) {Notif};
+    \node[pybox, right=of notif] (chat) {Chatbot\\\tiny Flask};
+    \node[infrabox, below=of auth] (pga) {pg-auth};
+    \node[infrabox, below=of user] (pgu) {pg-user};
+    \node[infrabox, below=of health] (pgh) {pg-health};
+    \node[infrabox, below=of pres] (pgp) {pg-pres};
+    \node[infrabox, below=of notif] (pgn) {pg-notif};
+    \node[infrabox, below=0.4cm of pgh, xshift=-0.9cm] (mongo) {Mongo};
+    \node[infrabox, below=0.4cm of pgh, xshift=0.9cm] (redis) {Redis};
+    \node[extbox, right=1.0cm of chat] (groq) {Groq};
+    \node[extbox, below=0.4cm of groq] (pine) {Pinecone};
+    \draw[flow] (br) -- (gw);
+    \draw[flow] (gw) -- (auth);
+    \draw[flow] (gw) -- (user);
+    \draw[flow] (gw) -- (health);
+    \draw[flow] (gw) -- (pres);
+    \draw[flow] (gw) -- (notif);
+    \draw[flow] (gw) -- (chat);
+    \draw[evt, thin] (gw) -- (eu);
+    \draw[flow] (auth) -- (pga);
+    \draw[flow] (user) -- (pgu);
+    \draw[flow] (health) -- (pgh);
+    \draw[flow] (pres) -- (pgp);
+    \draw[flow] (notif) -- (pgn);
+    \draw[flow] (health) to[bend right=8] (mongo);
+    \draw[flow] (gw) to[bend right=25] (redis);
+    \draw[flow] (chat) -- (groq);
+    \draw[flow] (chat.east) to[bend right=15] (pine.west);
+  \end{tikzpicture}}
+  \vspace{4pt}
+  \small Solid: synchronous HTTP. Dashed: Eureka heartbeats (+ RabbitMQ events, omitted for clarity).
+\end{frame}
+
+% ----- 5. RAG PIPELINE -----
+\begin{frame}{The 5-stage chatbot pipeline}
+  \begin{columns}[T]
+    \column{0.55\textwidth}
+    \begin{enumerate}\small
+      \item \textbf{Symptom extraction} --- structured JSON from Llama-3.3
+      \item \textbf{Disease RAG} --- Pinecone \texttt{general} k=4
+      \item \textbf{Nutrition RAG} --- Pinecone \texttt{nutrition} k=5, 7-row table
+      \item \textbf{Severity} --- 3-layer worst-of (rules + keywords + LLM)
+      \item \textbf{Home care} --- skipped if CRITICAL
+    \end{enumerate}
+    \vspace{4pt}
+    Gates around the pipeline:
+    \begin{itemize}\small
+      \item \alert{Smalltalk gate} --- no LLM cost for ``hi''
+      \item \alert{Fallback gate} --- pure-LLM if RAG says ``general''
+      \item \alert{Critical gate} --- red modal + tel:108 button
+    \end{itemize}
+    \column{0.45\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{Images/07-chat-symptom.png}
+  \end{columns}
+\end{frame}
+
+% ----- 6. CULTURAL ADAPTATION -----
+\begin{frame}{Cultural adaptation --- same query, three profiles}
+  \footnotesize
+  \begin{tabular}{lll}
+    \toprule
+    Profile & Breakfast & Lunch \\
+    \midrule
+    TN / Vegetarian & Idli + Sambar + Coconut water     & Brown rice + Kootu + Rasam + Curd \\
+    WB / Non-veg    & Luchi + Bengali omelette + Doi    & Bhaat + Machher jhol + Shukto     \\
+    Punjab / Vegan  & Makki ki Roti + Sarson ka Saag    & Brown rice + Dal Makhani (no ghee) \\
+                    & + Chana Masala (no cream)         & + Mixed Vegetable Sabzi            \\
+    \bottomrule
+  \end{tabular}
+  \vspace{8pt}
+
+  \normalsize Diet preference + state + age + gender flow:
+  \begin{center}\small
+    Register form $\rightarrow$ \texttt{users.db} $\rightarrow$ \texttt{X-User-Id} header
+    $\rightarrow$ chatbot calls \texttt{GET /users/me} $\rightarrow$ prompt enrichment
+    $\rightarrow$ Groq Llama-3.3
+  \end{center}
+\end{frame}
+
+% ----- 7. AUTHENTICATION FLOW -----
+\begin{frame}[fragile]{Auth: header-injection pattern}
+  Gateway is the only service that parses JWTs. Downstream services trust three
+  injected headers:
+  \begin{lstlisting}[basicstyle=\ttfamily\small, frame=single, framerule=0.5pt]
+@GetMapping("/me")
+public ApiResponse<UserProfileDto> getMe(
+    @RequestHeader("X-User-Id") String userId) {
+  return ApiResponse.success(userService.getProfile(userId));
+}
+  \end{lstlisting}
+  Benefits:
+  \begin{itemize}
+    \item Polyglot: Java + Python both read headers; no JWT library duplication
+    \item Logout uses Redis blacklist on \texttt{jti}; downstream is unaffected
+    \item Token refresh deduplicated in Angular interceptor (concurrent 401s share one refresh call)
+  \end{itemize}
+\end{frame}
+
+% ----- 8. SMOKE TEST RESULTS -----
+\begin{frame}[fragile]{End-to-end smoke test (deployed VM)}
+  \begin{lstlisting}[basicstyle=\ttfamily\small, frame=single]
+=== Smoke test against http://localhost:8080 ===
+  ok register
+  ok OTP captured                     433289
+  ok verify-otp
+  ok login (Postgres-Auth)            348-char token
+  ok Postgres-User /users/me          state='Tamil Nadu'
+  ok Postgres-Health POST vital
+  ok MongoDB POST mood                local Mongo serving
+  ok Chatbot (Pinecone + Groq)
+=== All checks passed ===
+  \end{lstlisting}
+  \small Single script exercises Postgres-Auth, Postgres-User (via RabbitMQ
+  listener), Postgres-Health, MongoDB, and the Pinecone+Groq chatbot.
+  Self-documenting acceptance test.
+\end{frame}
+
+% ----- 9. LIVE DEMO SCREENSHOTS -----
+\begin{frame}{Live demo (1/2)}
+  \begin{columns}
+    \column{0.5\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{Images/01-landing.png}\\
+    \small Landing page (animated)
+    \column{0.5\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{Images/04-dashboard.png}\\
+    \small Dashboard with quick-log vital
+  \end{columns}
+\end{frame}
+
+\begin{frame}{Live demo (2/2)}
+  \begin{columns}
+    \column{0.5\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{Images/11-fhir-export.png}\\
+    \small FHIR R4 export
+    \column{0.5\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{Images/15-sos.png}\\
+    \small Emergency SOS modal
+  \end{columns}
+\end{frame}
+
+% ----- 10. OBSERVABILITY -----
+\begin{frame}{Self-hosted observability}
+  \begin{columns}
+    \column{0.55\textwidth}
+    \begin{itemize}
+      \item Prometheus scrapes \texttt{/actuator/prometheus} every 15s
+      \item Grafana dashboard auto-provisioned from JSON
+      \item Tracks: JVM heap, RPS, p95 latency, GC pauses, threads, services-up
+    \end{itemize}
+    \vspace{6pt}
+    Observed in production:
+    \begin{itemize}\small
+      \item Heap comfortably under \texttt{-Xmx256m}
+      \item p95 latency \textless 100~ms (non-LLM endpoints)
+      \item Chatbot \texttt{/get}: 8--12~s (5--8 sequential LLM calls)
+    \end{itemize}
+    \column{0.45\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{Images/17-grafana.png}
+  \end{columns}
+\end{frame}
+
+% ----- 11. RISK ANALYSIS -----
+\begin{frame}{Risk analysis (per project brief)}
+  \footnotesize
+  \begin{tabular}{p{0.18\textwidth}p{0.36\textwidth}p{0.36\textwidth}}
+    \toprule
+    Category & Risk & Mitigation \\
+    \midrule
+    Data privacy & Stolen JWT replays & 15-min access expiry; Redis blacklist on logout; refresh-token rotation \\
+    & PII leakage via logs & Mood journal text encrypted with AES-256 at rest \\
+    \midrule
+    Medical accuracy & LLM hallucination & RAG grounding + 3-layer severity worst-of; mandatory ``not medical advice'' disclaimer \\
+    & Severity miscall & Worst of rules + keywords + LLM; CRITICAL bypasses home-care \\
+    \midrule
+    Availability & Single VM SPOF & Documented teardown/redeploy; systemd auto-restart; local-DB fallback when Atlas paused \\
+    \midrule
+    Legal / ethical & Regulatory scope & ``Informational, not medical advice'' on every chatbot reply; no prescriptions issued \\
+    \bottomrule
+  \end{tabular}
+\end{frame}
+
+% ----- 12. CONCLUSION -----
+\begin{frame}{Conclusion \& future work}
+  \textbf{What we built:}
+  \begin{itemize}\small
+    \item 8 microservices, 18,000+ LoC, deployed on single Azure VM
+    \item RAG chatbot with cultural-food advice + drug-interaction safety
+    \item FHIR R4 export, mood journal, family hub, emergency SOS
+    \item Self-hosted Prometheus+Grafana observability
+  \end{itemize}
+  \textbf{Honest limitations:} single-VM SPOF, English-only chatbot, OTP delivery limited to verified address (Resend free tier), no formal medical review.\\[4pt]
+  \textbf{Future work:}
+  \begin{itemize}\small
+    \item Federated FHIR aggregator (read across multiple HL7 sources)
+    \item HuggingFace cultural advisor (deferred --- replace Groq dependency)
+    \item Wearables integration (Apple Health / Google Fit)
+    \item Mobile companion app, multi-LLM fallback, HIPAA/GDPR roadmap
+  \end{itemize}
+  \vfill
+  \centering \alert{\textbf{Thank you. Questions?}}
+\end{frame}
+
+\end{document}
