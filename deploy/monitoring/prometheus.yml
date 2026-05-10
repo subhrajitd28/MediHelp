@@ -1,0 +1,38 @@
+# Prometheus scrape config for MediHelp.
+#
+# Each Java service exposes /actuator/prometheus (Spring Boot Actuator with
+# the micrometer-registry-prometheus dependency, already on the classpath).
+# The Python chatbot does not currently expose Prometheus metrics — adding
+# prometheus_flask_exporter would be a Phase 2 task.
+
+global:
+  scrape_interval:     15s
+  evaluation_interval: 15s
+  external_labels:
+    project: medihelp
+
+scrape_configs:
+  # Eureka (registry, :8761) is intentionally NOT scraped — it doesn't pull
+  # in micrometer-registry-prometheus. Its own UI at :8761 already shows
+  # registry health.
+  - job_name: 'medihelp-java'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['localhost:8080']
+        labels: { service: 'gateway',      port: '8080' }
+      - targets: ['localhost:8081']
+        labels: { service: 'auth',         port: '8081' }
+      - targets: ['localhost:8082']
+        labels: { service: 'user',         port: '8082' }
+      - targets: ['localhost:8083']
+        labels: { service: 'health',       port: '8083' }
+      - targets: ['localhost:8084']
+        labels: { service: 'prescription', port: '8084' }
+      - targets: ['localhost:8085']
+        labels: { service: 'notification', port: '8085' }
+
+  # Self-monitoring — Prometheus scrapes its own metrics so you can spot
+  # if scrape failures spike.
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']

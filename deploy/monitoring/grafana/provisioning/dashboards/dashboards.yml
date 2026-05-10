@@ -1,0 +1,13 @@
+# Dashboard provisioning — Grafana auto-imports any JSON files under
+# /etc/grafana/provisioning/dashboards on startup.
+apiVersion: 1
+
+providers:
+  - name:        MediHelp
+    orgId:       1
+    folder:      ''
+    type:        file
+    disableDeletion: false
+    editable:    true
+    options:
+      path: /etc/grafana/provisioning/dashboards
