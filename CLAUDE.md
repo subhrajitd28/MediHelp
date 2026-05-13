@@ -40,6 +40,8 @@ The chatbot's own `.env` lives in `medihelp-chatbot-service/.env`, **not** the r
 cd medihelp-frontend && npm install && ng serve   # http://localhost:4200
 ```
 
+**ngx-charts is pinned to `^22.0.0`** (not the latest 23.x) because 23.x requires Angular 18+ and the project is on Angular 17. If a teammate later bumps Angular to 18+, also bump ngx-charts. If `npm install` ever errors with an `ERESOLVE` peer-dep conflict on a fresh machine (e.g. a new clone on the VM), `npm install --legacy-peer-deps` is the documented escape hatch — re-pinning is preferred over relying on it.
+
 ### Tests
 There is **no test suite** — `mvn test` finds nothing. Verification is done by running the stack and hitting endpoints (see `deploy/scripts/status.sh` and the smoke flow below).
 
