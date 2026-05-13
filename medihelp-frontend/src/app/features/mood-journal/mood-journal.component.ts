@@ -56,12 +56,12 @@ const MOOD_COLOR = ['', '#d32f2f', '#f57c00', '#fdd835', '#7cb342', '#43a047'];
         </button>
       </header>
 
-      <mat-card class="legend-card">
-        <span *ngFor="let i of [1,2,3,4,5]">
+      <div class="legend-card">
+        <span class="legend-item" *ngFor="let i of [1,2,3,4,5]">
           <span class="dot" [style.background]="moodColor(i)"></span>
           {{ moodEmoji(i) }} {{ moodLabel(i) }}
         </span>
-      </mat-card>
+      </div>
 
       <mat-card class="calendar-card">
         <div class="calendar-header">
@@ -116,12 +116,25 @@ const MOOD_COLOR = ['', '#d32f2f', '#f57c00', '#fdd835', '#7cb342', '#43a047'];
     }
 
     .legend-card {
-      padding: 12px 16px;
+      padding: 10px 16px;
       margin-bottom: 16px;
       display: flex;
-      gap: 24px;
-      flex-wrap: wrap;
+      flex-direction: row;
+      align-items: center;
+      gap: 22px;
+      flex-wrap: nowrap;
+      overflow-x: auto;
       font-size: 13px;
+      white-space: nowrap;
+      background: #ffffff;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    }
+    .legend-item {
+      display: inline-flex;
+      align-items: center;
+      flex-shrink: 0;
+      gap: 4px;
     }
     .dot {
       display: inline-block;

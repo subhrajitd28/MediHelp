@@ -55,6 +55,14 @@ mat-card {
     margin-left: 4px;
   }
 
+  .score-hint {
+    margin: 12px 0 0;
+    font-size: 11px;
+    color: #888;
+    text-align: center;
+    line-height: 1.4;
+  }
+
   .sub-scores {
     display: flex;
     justify-content: space-around;
@@ -247,3 +255,68 @@ mat-card {
   .ql-type, .ql-value { width: 100%; }
   .ql-more { margin-left: 0; }
 }
+
+/* Services grid: tiled feature shortcuts so every major surface gets a card
+   on the dashboard (per project-guide feedback). Each tile is a routerLink. */
+.services-card {
+  /* The whole card occupies 2 columns when the grid is wide enough so the tiles
+     don't get cramped at 350px width. */
+  grid-column: span 2;
+}
+
+@media (max-width: 720px) {
+  .services-card { grid-column: span 1; }
+}
+
+.services-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.service-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  text-decoration: none;
+  color: #1a2533;
+  background: #f5f7fb;
+  border: 1px solid transparent;
+  transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+  cursor: pointer;
+
+  mat-icon {
+    font-size: 28px;
+    width: 28px;
+    height: 28px;
+    color: #3f51b5;
+  }
+
+  .tile-title {
+    font-weight: 600;
+    font-size: 14px;
+  }
+  .tile-desc {
+    font-size: 12px;
+    color: #667085;
+  }
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(63, 81, 181, 0.12);
+    border-color: rgba(63, 81, 181, 0.25);
+  }
+}
+
+/* Distinct hue per tile, mirroring the landing-page palette */
+.service-tile.chat          mat-icon { color: #6750a4; }
+.service-tile.prescriptions mat-icon { color: #0288d1; }
+.service-tile.mood          mat-icon { color: #f57c00; }
+.service-tile.family        mat-icon { color: #43a047; }
+.service-tile.records       mat-icon { color: #7b1fa2; }
+.service-tile.meds          mat-icon { color: #c62828; }
+.service-tile.scan          mat-icon { color: #00897b; }
+.service-tile.notifs        mat-icon { color: #1976d2; }

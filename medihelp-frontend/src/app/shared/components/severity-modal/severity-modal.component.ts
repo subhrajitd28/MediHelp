@@ -38,10 +38,19 @@ import { SeverityInfo } from '../../../core/services/chatbot.service';
             Call {{ data.emergency_call }} (Emergency)
           </a>
         }
-        <a mat-stroked-button [href]="data.hospital_url" target="_blank" rel="noopener">
+        <button mat-stroked-button type="button"
+                (click)="findHospital()"
+                [disabled]="locating">
           <mat-icon>local_hospital</mat-icon>
-          Find nearest hospital
-        </a>
+          @if (locating) {
+            Locating you…
+          } @else {
+            Find nearest hospital
+          }
+        </button>
+        @if (locationError) {
+          <p class="loc-note">{{ locationError }}</p>
+        }
         <button mat-button (click)="close()">I understand</button>
       </div>
 
@@ -85,13 +94,61 @@ import { SeverityInfo } from '../../../core/services/chatbot.service';
       font-size: 12px;
       color: #888;
     }
+    .loc-note {
+      margin: -4px 0 0;
+      font-size: 12px;
+      color: #c62828;
+    }
   `]
 })
 export class SeverityModalComponent {
+  locating = false;
+  locationError: string | null = null;
+
   constructor(
     public dialogRef: MatDialogRef<SeverityModalComponent>,
     @Inject(MAT_DIALOG_DATA) public data: SeverityInfo
   ) {}
 
   close(): void { this.dialogRef.close(); }
+
+  /**
+   * Open Google Maps zoomed to the user's actual coordinates so they see
+   * hospitals *around them*, not a generic "near me" search that depends on
+   * Google's IP-geolocation guess. Falls back to the backend's coarse
+   * hospital_url if permission is denied, geolocation isn't available, or
+   * the request times out.
+   *
+   * Trade-off: enableHighAccuracy=false + 5s timeout chosen on purpose —
+   * in an emergency, a quick fix on a WiFi/IP fix beats a slow GPS lock.
+   */
+  findHospital(): void {
+    this.locationError = null;
+
+    const openCoarse = () => window.open(this.data.hospital_url, '_blank', 'noopener');
+
+    if (!('geolocation' in navigator)) {
+      openCoarse();
+      return;
+    }
+
+    this.locating = true;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        this.locating = false;
+        const { latitude, longitude } = pos.coords;
+        const url = `https://www.google.com/maps/search/hospital/@${latitude},${longitude},15z`;
+        window.open(url, '_blank', 'noopener');
+      },
+      (err) => {
+        this.locating = false;
+        this.locationError =
+          err.code === err.PERMISSION_DENIED
+            ? 'Location permission denied — opening generic search.'
+            : 'Could not get location — opening generic search.';
+        openCoarse();
+      },
+      { enableHighAccuracy: false, timeout: 5000, maximumAge: 60_000 }
+    );
+  }
 }

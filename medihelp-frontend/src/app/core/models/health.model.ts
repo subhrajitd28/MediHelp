@@ -32,12 +32,14 @@ export interface VitalDataPoint {
 }
 
 export interface HealthScoreResponse {
+  id?: string;
   totalScore: number;
-  vitalScore: number;
-  activityScore: number;
-  nutritionScore: number;
-  sleepScore: number;
-  mentalHealthScore: number;
+  vitalsScore: number;
+  moodScore: number;
+  medicationScore: number;
+  exerciseScore: number;
+  dietScore: number;
+  appointmentScore: number;
   calculatedAt: string;
 }
 

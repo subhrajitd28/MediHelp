@@ -113,6 +113,12 @@ export class DashboardComponent implements OnInit {
           next: v => this.latestVitals = v || {},
           error: () => {}
         });
+        // Re-score: each new vital is worth 5 points (cap 20), so the
+        // dashboard's Health Score should jump immediately.
+        this.healthScoreService.calculateScore().subscribe({
+          next: score => this.healthScore = score,
+          error: () => {}
+        });
       },
       error: (err) => {
         this.quickSaving = false;
@@ -128,9 +134,18 @@ export class DashboardComponent implements OnInit {
   loadDashboardData(): void {
     this.loading = true;
 
-    this.healthScoreService.getLatestScore().subscribe({
+    // Recalculate first, then read latest. Calculation is idempotent (saves a
+    // new snapshot row) and the only thing that turns the placeholder default
+    // of {totalScore: 0} into an actual score derived from today's logs.
+    this.healthScoreService.calculateScore().subscribe({
       next: score => this.healthScore = score,
-      error: () => this.healthScore = null
+      error: () => {
+        // Calculation failed — fall back to whatever was last saved.
+        this.healthScoreService.getLatestScore().subscribe({
+          next: score => this.healthScore = score,
+          error: () => this.healthScore = null
+        });
+      }
     });
 
     this.vitalService.getLatestVitals().subscribe({

@@ -1098,6 +1098,70 @@ def describe_image(image_bytes: bytes, mime: str = "image/jpeg") -> str:
 
     return final_result
 
+
+def extract_medications_structured(image_analysis_text: str) -> list:
+    """
+    Parse free-form prescription analysis into a structured medication list.
+
+    Runs after describe_image() — adds ~1-2s + 1 Groq call but turns the
+    image-analysis surface into auto-fill data for the Medicines tab.
+
+    Returns a list of {"name", "dosage", "frequency"} dicts. Empty list on
+    any error so the upstream /get/image endpoint never breaks because of
+    extraction failure.
+    """
+    if not image_analysis_text or not image_analysis_text.strip():
+        return []
+
+    system = (
+        "You are a medical OCR post-processor. Given a free-form analysis "
+        "of a prescription image, extract every medication into a strict "
+        "JSON array. Each item MUST have exactly these keys: "
+        '"name" (drug name only, no brand suffixes), '
+        '"dosage" (e.g., "500mg", "10mg", "1 tablet"), '
+        '"frequency" (e.g., "twice daily", "once daily", "as needed"). '
+        "If a field is unknown, use an empty string. "
+        "Return ONLY the JSON array — no prose, no markdown, no code fences. "
+        "If the analysis contains no medications, return []."
+    )
+
+    try:
+        from langchain_core.messages import SystemMessage, HumanMessage
+        resp = chat_model.invoke([
+            SystemMessage(content=system),
+            HumanMessage(content=f"Prescription analysis:\n{image_analysis_text}"),
+        ])
+        raw = (resp.content or "").strip()
+
+        # Strip code fences if the LLM ignored the instruction
+        if raw.startswith("```"):
+            raw = raw.strip("`")
+            if raw.startswith("json"):
+                raw = raw[4:].strip()
+
+        meds = json.loads(raw)
+        if not isinstance(meds, list):
+            return []
+
+        # Sanitise each entry — drop items missing the drug name entirely
+        cleaned = []
+        for m in meds:
+            if not isinstance(m, dict):
+                continue
+            name = str(m.get("name", "")).strip()
+            if not name:
+                continue
+            cleaned.append({
+                "name":      name,
+                "dosage":    str(m.get("dosage", "")).strip(),
+                "frequency": str(m.get("frequency", "")).strip(),
+            })
+        print(f"💊 Extracted {len(cleaned)} structured medication(s)")
+        return cleaned
+    except Exception as e:
+        print(f"⚠️  Medication extraction failed (returning []): {e}")
+        return []
+
 # ════════════════════════════════════════════════════════════════════════════
 # CULTURAL ADVICE — friend's HuggingFace healthAdvisor microservice integration
 # ════════════════════════════════════════════════════════════════════════════
@@ -1288,6 +1352,10 @@ def get_image_response():
         description = describe_image(image_file.read(), mime)
         combined    = f"{extra_msg}\n\nImage analysis: {description}" if extra_msg else description
 
+        # Pull a structured medications list from the analysis so the
+        # prescription-scan UI can auto-fill the Medicines table.
+        medications = extract_medications_structured(description)
+
         sid     = _ensure_session(user_id, session_id)
         history = _get_msgs(user_id, sid)
         ctx     = _history_ctx(history)
@@ -1301,7 +1369,12 @@ def get_image_response():
         _update_session_meta(user_id, sid,
                              result["identified_disease"],
                              result["severity"]["severity"])
-        return jsonify({"session_id": sid, "image_analysis": description, **result})
+        return jsonify({
+            "session_id":     sid,
+            "image_analysis": description,
+            "medications":    medications,
+            **result,
+        })
 
     except Exception as e:
         traceback.print_exc()

@@ -5,6 +5,7 @@ import { MatSidenavModule, MatSidenav } from '@angular/material/sidenav';
 import { AuthService } from './core/services/auth.service';
 import { NavbarComponent } from './shared/components/navbar/navbar.component';
 import { SidebarComponent } from './shared/components/sidebar/sidebar.component';
+import { ChatbotFabComponent } from './shared/components/chatbot-fab/chatbot-fab.component';
 
 @Component({
   selector: 'app-root',
@@ -14,7 +15,8 @@ import { SidebarComponent } from './shared/components/sidebar/sidebar.component'
     RouterOutlet,
     MatSidenavModule,
     NavbarComponent,
-    SidebarComponent
+    SidebarComponent,
+    ChatbotFabComponent
   ],
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss'

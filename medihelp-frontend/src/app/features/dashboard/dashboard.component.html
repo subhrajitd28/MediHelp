@@ -41,7 +41,12 @@
     </mat-card>
 
     <div class="dashboard-grid">
-      <!-- Health Score Card -->
+      <!-- Health Score Card.
+           Today's score = vitals logged today (5 pts each, cap 20) + mood
+           logged today (10 pts). Max attainable is 30 until the medication,
+           exercise, diet and appointment sub-scores get real implementations
+           (currently hardcoded to 0 in health-service). Recalculated on every
+           dashboard load + after a quick-log vital save. -->
       <mat-card class="health-score-card">
         <mat-card-header>
           <mat-card-title>
@@ -50,33 +55,34 @@
           </mat-card-title>
         </mat-card-header>
         <mat-card-content>
-          @if (healthScore) {
+          @if (healthScore && healthScore.totalScore > 0) {
             <div class="score-circle">
               <span class="score-value">{{ healthScore.totalScore }}</span>
-              <span class="score-max">/ 100</span>
+              <span class="score-max">/ 30</span>
             </div>
             <div class="sub-scores">
               <div class="sub-score">
                 <span class="label">Vitals</span>
-                <span class="value">{{ healthScore.vitalScore }}</span>
+                <span class="value">{{ healthScore.vitalsScore || 0 }}</span>
               </div>
               <div class="sub-score">
-                <span class="label">Activity</span>
-                <span class="value">{{ healthScore.activityScore }}</span>
+                <span class="label">Mood</span>
+                <span class="value">{{ healthScore.moodScore || 0 }}</span>
               </div>
               <div class="sub-score">
-                <span class="label">Sleep</span>
-                <span class="value">{{ healthScore.sleepScore }}</span>
+                <span class="label">Meds</span>
+                <span class="value">{{ healthScore.medicationScore || 0 }}</span>
               </div>
               <div class="sub-score">
-                <span class="label">Mental</span>
-                <span class="value">{{ healthScore.mentalHealthScore }}</span>
+                <span class="label">Appts</span>
+                <span class="value">{{ healthScore.appointmentScore || 0 }}</span>
               </div>
             </div>
+            <p class="score-hint">Today: 5pts per vital (max 20) · 10pts for journaling mood.</p>
           } @else {
             <div class="empty-state">
               <mat-icon>info</mat-icon>
-              <p>No health score yet. Start logging your vitals!</p>
+              <p>No health score yet. Log a vital or your mood today to start.</p>
             </div>
           }
         </mat-card-content>
@@ -171,6 +177,61 @@
               <p>No upcoming appointments.</p>
             </div>
           }
+        </mat-card-content>
+      </mat-card>
+
+      <!-- Services grid: one tile per major feature so the dashboard exposes
+           every part of the app, not just the read-only summaries above. -->
+      <mat-card class="services-card">
+        <mat-card-header>
+          <mat-card-title>
+            <mat-icon>apps</mat-icon>
+            Explore
+          </mat-card-title>
+        </mat-card-header>
+        <mat-card-content>
+          <div class="services-grid">
+            <a class="service-tile chat" routerLink="/ai-chat">
+              <mat-icon>smart_toy</mat-icon>
+              <span class="tile-title">AI Health Assistant</span>
+              <span class="tile-desc">Symptom triage + cultural food advice</span>
+            </a>
+            <a class="service-tile prescriptions" routerLink="/prescriptions">
+              <mat-icon>description</mat-icon>
+              <span class="tile-title">Prescriptions</span>
+              <span class="tile-desc">Scan a prescription, manage medications</span>
+            </a>
+            <a class="service-tile mood" routerLink="/mood-journal">
+              <mat-icon>sentiment_satisfied</mat-icon>
+              <span class="tile-title">Mood Journal</span>
+              <span class="tile-desc">Daily check-in, encrypted on-device</span>
+            </a>
+            <a class="service-tile family" routerLink="/family">
+              <mat-icon>family_restroom</mat-icon>
+              <span class="tile-title">Family Hub</span>
+              <span class="tile-desc">Share health snapshots with loved ones</span>
+            </a>
+            <a class="service-tile records" routerLink="/health-records">
+              <mat-icon>folder_special</mat-icon>
+              <span class="tile-title">Health Records</span>
+              <span class="tile-desc">Export FHIR Bundle (HL7 R4)</span>
+            </a>
+            <a class="service-tile meds" routerLink="/medications">
+              <mat-icon>medication_liquid</mat-icon>
+              <span class="tile-title">Drug Interactions</span>
+              <span class="tile-desc">OpenFDA-backed safety checks</span>
+            </a>
+            <a class="service-tile scan" routerLink="/scan">
+              <mat-icon>document_scanner</mat-icon>
+              <span class="tile-title">Scan Prescription</span>
+              <span class="tile-desc">OCR + auto-fill medications</span>
+            </a>
+            <a class="service-tile notifs" routerLink="/notifications">
+              <mat-icon>notifications</mat-icon>
+              <span class="tile-title">Notifications</span>
+              <span class="tile-desc">Reminders, alerts, family pings</span>
+            </a>
+          </div>
         </mat-card-content>
       </mat-card>
 
