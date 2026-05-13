@@ -553,7 +553,7 @@ def _assess_severity(query: str, disease: str, disease_info: str,
             "show":    True,
             "color":   "#ff1744",
             "icon":    "🚨",
-            "title":   "EMERGENCY — Go to Hospital Immediately!",
+            "title":   "Critical — Admit to Hospital ASAP",
             "message": (llm_action or
                         "This condition may be life-threatening. "
                         "Call emergency services (108 / 112) or go to the nearest "
@@ -564,7 +564,7 @@ def _assess_severity(query: str, disease: str, disease_info: str,
             "show":    False,
             "color":   "#ff6d00",
             "icon":    "⚠️",
-            "title":   "See a Doctor Today — Do Not Delay",
+            "title":   "Urgent — Immediate Doctor Visit",
             "message": (llm_action or
                         "Your symptoms need prompt medical attention. "
                         "Please visit a doctor or urgent care clinic today."),
@@ -574,16 +574,17 @@ def _assess_severity(query: str, disease: str, disease_info: str,
             "show":    False,
             "color":   "#ffd600",
             "icon":    "ℹ️",
-            "title":   "Doctor Visit Recommended",
+            "title":   "Moderate — Visit Doctor (Not Urgent)",
             "message": (llm_action or
-                        "Consider scheduling a doctor appointment within the next 2-3 days."),
+                        "Schedule a doctor appointment within the next 2-3 days. "
+                        "Not an emergency, but worth getting checked."),
             "call":    None,
         },
         "MILD": {
             "show":    False,
             "color":   "#00c853",
             "icon":    "✅",
-            "title":   "Manageable at Home",
+            "title":   "Mild — Manageable at Home",
             "message": (llm_action or
                         "Monitor your symptoms. See a doctor if they worsen."),
             "call":    None,
@@ -679,6 +680,60 @@ def _last_patient_msg(query: str) -> str:
             break
     return last.strip().lower().rstrip("!?.,")
 
+def _is_off_topic(query: str) -> bool:
+    """
+    LLM-based classifier that catches non-medical inputs (arithmetic, weather,
+    programming questions, random trivia, etc.) so the pipeline can short-circuit
+    with a polite refusal instead of inventing a "disease" for "what is 2+2".
+
+    Runs AFTER the smalltalk gate (so we don't burn an LLM call on "hi") and
+    BEFORE symptom extraction (so we save the rest of the pipeline on off-topic).
+
+    Returns True  → caller should refuse politely.
+    Returns False → caller proceeds with the full medical pipeline.
+    Defaults to False on any LLM error — better to over-trigger the pipeline
+    than to refuse a real symptom report.
+    """
+    try:
+        from langchain_core.messages import SystemMessage, HumanMessage
+        system = (
+            "You are a strict topic classifier for a medical pre-screening chatbot. "
+            "Classify the user's input as exactly one of:\n"
+            "  MEDICAL  — anything about symptoms, illness, medications, body, "
+            "mental health, nutrition for a condition, anatomy, drug interactions, "
+            "injuries, pain, sleep issues, prescriptions, vitals, allergies, or "
+            "any genuine health concern (even one-word symptoms like 'headache').\n"
+            "  OFFTOPIC — arithmetic, math, programming, weather, news, jokes, "
+            "riddles, entertainment, general trivia, philosophy, gossip, recipes "
+            "(unrelated to a medical diet), travel, finance, or anything clearly "
+            "unrelated to health.\n\n"
+            "Reply with EXACTLY one word: MEDICAL or OFFTOPIC. No other text."
+        )
+        resp = chat_model.invoke([
+            SystemMessage(content=system),
+            HumanMessage(content=query.strip()[:500]),
+        ])
+        verdict = (resp.content or "").strip().upper()
+        # Be conservative: only treat as off-topic if the model is confident.
+        is_off = verdict.startswith("OFFTOPIC")
+        print(f"🔎 Topic classifier: {verdict!r} → {'off-topic' if is_off else 'medical'}")
+        return is_off
+    except Exception as e:
+        print(f"⚠️  Off-topic classifier failed (defaulting to MEDICAL): {e}")
+        return False
+
+
+_OFFTOPIC_REFUSAL = (
+    "I'm a medical pre-screening assistant — I can only help with health-related "
+    "questions like **symptoms**, **medications**, **diet for a condition**, "
+    "**prescription scanning**, or **drug interactions**.\n\n"
+    "Try asking something like:\n"
+    "• _\"I have a headache and fever for 2 days\"_\n"
+    "• _\"What should I eat for high blood pressure?\"_\n"
+    "• _\"Is it safe to take aspirin with warfarin?\"_"
+)
+
+
 def _smalltalk_reply(text: str) -> str | None:
     """
     Return a friendly conversational reply if the input is small-talk, otherwise
@@ -722,7 +777,7 @@ def run_pipeline(query: str, user_id: str = None, session_id: str = None) -> dic
              (skipped for CRITICAL / URGENT — emergency modal takes over)
     """
 
-    # ── Greeting gate: short-circuit small-talk before invoking RAG/LLM ──────
+    # ── Gate 1: small-talk — short-circuit greetings before invoking RAG/LLM ─
     last_msg = _last_patient_msg(query)
     chit_chat_reply = _smalltalk_reply(last_msg)
     if chit_chat_reply:
@@ -743,6 +798,29 @@ def run_pipeline(query: str, user_id: str = None, session_id: str = None) -> dic
                 "emergency_call": None,
                 "hospital_url":  "",
                 "reason":        "",
+            },
+            "used_fallback":      False,
+        }
+
+    # ── Gate 2: off-topic — refuse arithmetic / unrelated questions ─────────
+    if _is_off_topic(last_msg):
+        print(f"🚫 Off-topic input ({last_msg!r}) — refusing")
+        return {
+            "identified_disease": "general",
+            "disease_info":       "",
+            "home_care":          "",
+            "nutrition_json":     {},
+            "reply":              _OFFTOPIC_REFUSAL,
+            "severity": {
+                "severity":      "MILD",
+                "show_alert":    False,
+                "alert_color":   "#9e9e9e",
+                "alert_icon":    "🚫",
+                "alert_title":   "Off-topic",
+                "alert_message": "",
+                "emergency_call": None,
+                "hospital_url":  "",
+                "reason":        "Question not health-related",
             },
             "used_fallback":      False,
         }
@@ -828,6 +906,16 @@ def run_pipeline(query: str, user_id: str = None, session_id: str = None) -> dic
             print(f"⚠️  Home care chain error: {e}")
 
     # ── Build reply shown to user ─────────────────────────────────────────────
+    # Severity tagline shown at the top of every diagnosed reply so the user
+    # immediately sees the urgency level. CRITICAL also fires the SOS modal
+    # via the severity payload (handled by the frontend).
+    severity_banner = {
+        "MILD":     "🟢 **Mild** — Manageable at home",
+        "MODERATE": "🟡 **Moderate** — Visit a doctor (not urgent)",
+        "URGENT":   "🟠 **Urgent** — Immediate doctor visit",
+        "CRITICAL": "🚨 **Critical** — Admit to hospital ASAP",
+    }.get(sev_level, sev_level)
+
     if identified_disease.lower() in ("general", "unknown", ""):
         reply = (
             "_I need a bit more information to give you an accurate assessment. "
@@ -835,7 +923,12 @@ def run_pipeline(query: str, user_id: str = None, session_id: str = None) -> dic
             "and any existing health conditions or medications?_"
         )
     else:
-        reply = clean_disease
+        # Disease name + severity prepended so the user can see the verdict
+        # at a glance before reading the longer analysis.
+        reply  = f"### 🩺 Possible condition: **{identified_disease}**\n\n"
+        reply += f"**Severity:** {severity_banner}\n\n"
+        reply += "---\n\n"
+        reply += clean_disease
         if nutrition_md:
             reply += f"\n\n**🥗 Daily Nutrition Targets**\n\n{nutrition_md}"
         if home_care_table:

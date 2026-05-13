@@ -19,16 +19,11 @@ export interface VitalResponse {
 
 export interface VitalTrendResponse {
   type: string;
-  period: string;
   averageValue: number;
   minValue: number;
   maxValue: number;
-  dataPoints: VitalDataPoint[];
-}
-
-export interface VitalDataPoint {
-  value: number;
-  recordedAt: string;
+  readingsCount: number;
+  periodDays: number;
 }
 
 export interface HealthScoreResponse {
