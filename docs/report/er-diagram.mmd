@@ -1,0 +1,239 @@
+%%{init: {'theme':'base', 'themeVariables': {'fontSize': '12px', 'primaryColor':'#e3f2fd', 'primaryBorderColor':'#1976d2', 'lineColor':'#7b1fa2'}}}%%
+erDiagram
+    %% =================================================================
+    %% Auth Service DB (PostgreSQL :5433)
+    %% =================================================================
+    USERS_AUTH ||--o{ REFRESH_TOKENS : "issues"
+    USERS_AUTH {
+        UUID id PK
+        string email UK
+        string password_hash
+        string phone UK
+        bool is_verified
+        string otp_code
+        instant otp_expiry
+        bool is_active
+        string role
+        instant created_at
+        instant last_login_at
+    }
+    REFRESH_TOKENS {
+        UUID id PK
+        UUID user_id FK
+        string token_hash
+        instant expires_at
+        bool revoked
+        instant created_at
+    }
+
+    %% =================================================================
+    %% User Service DB (PostgreSQL :5434)
+    %% =================================================================
+    USER_PROFILES ||--o{ EMERGENCY_CONTACTS : "has"
+    USER_PROFILES ||--o{ HEALTH_CONDITIONS : "has"
+    USER_PROFILES ||--o{ ALLERGIES : "has"
+    USER_PROFILES ||--o{ FAMILY_MEMBERS : "belongs to"
+    FAMILY_GROUPS ||--o{ FAMILY_MEMBERS : "contains"
+    USER_PROFILES ||--o{ SOS_SHAREABLE_LINKS : "creates"
+    USER_PROFILES {
+        UUID id PK
+        UUID user_id "links to auth.users (no FK across DBs)"
+        string first_name
+        string last_name
+        date date_of_birth
+        string gender
+        string state "drives cultural advice"
+        string diet_preference "Veg/Vegan/Non-veg/Eggetarian/Jain"
+        string blood_type
+        double height
+        double weight
+        string phone
+        string bio
+    }
+    FAMILY_GROUPS {
+        UUID id PK
+        UUID creator_user_id
+        string name
+        instant created_at
+    }
+    FAMILY_MEMBERS {
+        UUID id PK
+        UUID group_id FK
+        UUID member_user_id
+        string role "HEAD or MEMBER"
+    }
+    EMERGENCY_CONTACTS {
+        UUID id PK
+        UUID user_id FK
+        string name
+        string phone
+        string relationship
+    }
+    HEALTH_CONDITIONS {
+        UUID id PK
+        UUID user_id FK
+        string condition_name
+        date diagnosed_date
+    }
+    ALLERGIES {
+        UUID id PK
+        UUID user_id FK
+        string allergen
+        string severity
+    }
+    SOS_SHAREABLE_LINKS {
+        UUID id PK
+        UUID user_id FK
+        string token
+        instant expires_at
+    }
+
+    %% =================================================================
+    %% Health Service DB (PostgreSQL :5435  +  MongoDB)
+    %% =================================================================
+    VITALS {
+        UUID id PK
+        UUID user_id
+        string type "HEART_RATE / BP_SYS / BP_DIA / BLOOD_SUGAR / TEMP / SPO2 / WEIGHT"
+        double value
+        string unit
+        string source "MANUAL / FITBIT (future)"
+        string notes
+        instant recorded_at
+        instant created_at
+    }
+    VITAL_BASELINES {
+        UUID id PK
+        UUID user_id
+        string type
+        double low
+        double high
+    }
+    HEALTH_SCORES {
+        UUID id PK
+        UUID user_id
+        int total_score
+        int vitals_score
+        int mood_score
+        int medication_score
+        int exercise_score
+        int diet_score
+        int appointment_score
+        instant calculated_at
+    }
+    STREAKS {
+        UUID id PK
+        UUID user_id
+        string streak_type "VITAL_LOGGING / MOOD / MEDICATION / LOGIN"
+        int current_streak
+        int longest_streak
+        date last_activity_date
+    }
+    USER_BADGES }o--|| BADGES : "earned"
+    BADGES {
+        UUID id PK
+        string badge_type
+        string name
+        string description
+    }
+    USER_BADGES {
+        UUID id PK
+        UUID user_id
+        UUID badge_id FK
+        instant earned_at
+    }
+    MOOD_ENTRIES_MONGO {
+        ObjectId _id PK
+        string userId
+        int mood "1-5"
+        string journalText "AES-256 encrypted"
+        array tags
+        int sleepHours
+        int exerciseMinutes
+        instant recordedAt
+    }
+    HEALTH_RECORDS_MONGO {
+        ObjectId _id PK
+        string userId
+        string title
+        string fileUrl
+        string mimeType
+        instant uploadedAt
+    }
+
+    %% =================================================================
+    %% Prescription Service DB (PostgreSQL :5436)
+    %% =================================================================
+    PRESCRIPTIONS ||--o{ MEDICATIONS : "lists"
+    MEDICATIONS ||--o{ MEDICATION_SCHEDULES : "scheduled"
+    MEDICATIONS ||--o{ MEDICATION_LOGS : "logged as"
+    PRESCRIPTIONS {
+        UUID id PK
+        UUID user_id
+        string doctor_name
+        string hospital
+        date prescribed_date
+        string notes
+        text ocr_text "raw OCR output for audit"
+        instant created_at
+    }
+    MEDICATIONS {
+        UUID id PK
+        UUID prescription_id FK
+        string drug_name
+        string dosage
+        string frequency "ONCE_DAILY / TWICE_DAILY / etc"
+        date start_date
+        date end_date
+    }
+    MEDICATION_SCHEDULES {
+        UUID id PK
+        UUID medication_id FK
+        string day_of_week
+        time time_of_day
+    }
+    MEDICATION_LOGS {
+        UUID id PK
+        UUID medication_id FK
+        UUID user_id
+        instant taken_at
+        bool was_on_time
+    }
+    APPOINTMENTS {
+        UUID id PK
+        UUID user_id
+        string doctor_name
+        string hospital
+        string purpose
+        instant scheduled_at
+        string status "SCHEDULED / COMPLETED / CANCELLED"
+    }
+    DRUG_INTERACTIONS_CACHE {
+        UUID id PK
+        string drug_a
+        string drug_b
+        string severity "SEVERE / MODERATE / MILD"
+        text description
+        instant cached_at
+    }
+
+    %% =================================================================
+    %% Notification Service DB (PostgreSQL :5437)
+    %% =================================================================
+    NOTIFICATIONS {
+        UUID id PK
+        UUID user_id
+        string type "MEDICATION / APPOINTMENT / EMERGENCY / SYSTEM"
+        string title
+        text body
+        bool is_read
+        instant created_at
+        instant read_at
+    }
+    NOTIFICATION_PREFERENCES {
+        UUID id PK
+        UUID user_id
+        bool email_enabled
+        bool push_enabled
+        bool in_app_enabled
+    }

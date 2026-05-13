@@ -1,0 +1,166 @@
+%%{init: {
+  'theme': 'base',
+  'themeVariables': {
+    'fontSize': '11px',
+    'primaryColor':'#e3f2fd',
+    'primaryBorderColor':'#1976d2',
+    'lineColor':'#7b1fa2',
+    'tertiaryColor':'#fff'
+  },
+  'er': {
+    'layoutDirection': 'TB',
+    'minEntityWidth': 100,
+    'minEntityHeight': 35,
+    'entityPadding': 8
+  }
+}}%%
+erDiagram
+    %% ============== AUTH (5433) ==============
+    USERS ||--o{ REFRESH_TOKENS : issues
+    USERS {
+        UUID id PK
+        string email UK
+        string password_hash
+        bool is_verified
+        string role
+    }
+    REFRESH_TOKENS {
+        UUID id PK
+        UUID user_id FK
+        string token_hash
+        bool revoked
+        instant expires_at
+    }
+
+    %% ============== USER (5434) ==============
+    USER_PROFILES ||--o{ EMERGENCY_CONTACTS : has
+    USER_PROFILES ||--o{ HEALTH_CONDITIONS : has
+    USER_PROFILES ||--o{ ALLERGIES : has
+    USER_PROFILES ||--o{ FAMILY_MEMBERS : in
+    FAMILY_GROUPS ||--o{ FAMILY_MEMBERS : has
+    USER_PROFILES {
+        UUID id PK
+        UUID user_id
+        string first_name
+        date dob
+        string gender
+        string state
+        string diet_preference
+    }
+    FAMILY_GROUPS {
+        UUID id PK
+        UUID creator_id
+        string name
+    }
+    FAMILY_MEMBERS {
+        UUID id PK
+        UUID group_id FK
+        UUID member_id
+        string role
+    }
+    EMERGENCY_CONTACTS {
+        UUID id PK
+        UUID user_id FK
+        string phone
+    }
+    HEALTH_CONDITIONS {
+        UUID id PK
+        UUID user_id FK
+        string name
+    }
+    ALLERGIES {
+        UUID id PK
+        UUID user_id FK
+        string allergen
+    }
+
+    %% ============== HEALTH (5435 + Mongo) ==============
+    USER_BADGES }o--|| BADGES : earned
+    VITALS {
+        UUID id PK
+        UUID user_id
+        string type
+        double value
+        instant recorded_at
+    }
+    HEALTH_SCORES {
+        UUID id PK
+        UUID user_id
+        int total_score
+        int vitals_score
+        int mood_score
+    }
+    STREAKS {
+        UUID id PK
+        UUID user_id
+        string type
+        int current
+        int longest
+    }
+    BADGES {
+        UUID id PK
+        string name
+    }
+    USER_BADGES {
+        UUID id PK
+        UUID user_id
+        UUID badge_id FK
+    }
+    MOOD_ENTRIES {
+        ObjectId id PK
+        string userId
+        int mood
+        string journalText
+    }
+    HEALTH_RECORDS {
+        ObjectId id PK
+        string userId
+        string fileUrl
+    }
+
+    %% ============== PRESCRIPTION (5436) ==============
+    PRESCRIPTIONS ||--o{ MEDICATIONS : has
+    MEDICATIONS ||--o{ MED_LOGS : logged
+    PRESCRIPTIONS {
+        UUID id PK
+        UUID user_id
+        string doctor_name
+        date prescribed_date
+    }
+    MEDICATIONS {
+        UUID id PK
+        UUID prescription_id FK
+        string drug_name
+        string dosage
+        string frequency
+    }
+    MED_LOGS {
+        UUID id PK
+        UUID medication_id FK
+        instant taken_at
+    }
+    APPOINTMENTS {
+        UUID id PK
+        UUID user_id
+        instant scheduled_at
+        string status
+    }
+    DRUG_INTERACTIONS {
+        UUID id PK
+        string drug_a
+        string drug_b
+        string severity
+    }
+
+    %% ============== NOTIFICATION (5437) ==============
+    NOTIFICATIONS {
+        UUID id PK
+        UUID user_id
+        string type
+        bool is_read
+    }
+    NOTIF_PREFS {
+        UUID id PK
+        UUID user_id
+        bool email_enabled
+    }

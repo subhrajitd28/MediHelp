@@ -1,0 +1,70 @@
+%%{init: {'theme':'base','themeVariables':{'fontSize':'13px','primaryColor':'#e3f2fd','primaryBorderColor':'#1976d2'}}}%%
+erDiagram
+    %% =============================================
+    %% MediHelp — Identity & Profile (Auth + User)
+    %% =============================================
+    USERS ||--o{ REFRESH_TOKENS : issues
+    USER_PROFILES ||--o{ EMERGENCY_CONTACTS : has
+    USER_PROFILES ||--o{ HEALTH_CONDITIONS : has
+    USER_PROFILES ||--o{ ALLERGIES : has
+    USER_PROFILES ||--o{ FAMILY_MEMBERS : in
+    FAMILY_GROUPS ||--o{ FAMILY_MEMBERS : has
+
+    USERS {
+        UUID id PK
+        string email UK
+        string password_hash
+        string phone UK
+        bool is_verified
+        string otp_code
+        string role
+        instant created_at
+    }
+    REFRESH_TOKENS {
+        UUID id PK
+        UUID user_id FK
+        string token_hash
+        bool revoked
+        instant expires_at
+    }
+    USER_PROFILES {
+        UUID id PK
+        UUID user_id "→ users.id"
+        date date_of_birth
+        string gender
+        string state "drives culture"
+        string diet_preference
+        double height
+        double weight
+        string blood_type
+    }
+    FAMILY_GROUPS {
+        UUID id PK
+        UUID creator_user_id
+        string name
+        instant created_at
+    }
+    FAMILY_MEMBERS {
+        UUID id PK
+        UUID group_id FK
+        UUID member_user_id
+        string role "HEAD/MEMBER"
+    }
+    EMERGENCY_CONTACTS {
+        UUID id PK
+        UUID user_id FK
+        string name
+        string phone
+        string relationship
+    }
+    HEALTH_CONDITIONS {
+        UUID id PK
+        UUID user_id FK
+        string condition_name
+    }
+    ALLERGIES {
+        UUID id PK
+        UUID user_id FK
+        string allergen
+        string severity
+    }

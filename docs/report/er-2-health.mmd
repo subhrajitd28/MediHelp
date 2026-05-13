@@ -1,0 +1,71 @@
+%%{init: {'theme':'base','themeVariables':{'fontSize':'13px','primaryColor':'#fff3e0','primaryBorderColor':'#f57c00'}}}%%
+erDiagram
+    %% =============================================
+    %% MediHelp — Health Service (Postgres + Mongo)
+    %% =============================================
+    USER_BADGES }o--|| BADGES : earned
+
+    VITALS {
+        UUID id PK
+        UUID user_id
+        string type "HEART_RATE / BP / etc"
+        double value
+        string unit
+        string source "MANUAL / FITBIT"
+        instant recorded_at
+    }
+    VITAL_BASELINES {
+        UUID id PK
+        UUID user_id
+        string type
+        double low
+        double high
+    }
+    HEALTH_SCORES {
+        UUID id PK
+        UUID user_id
+        int total_score
+        int vitals_score
+        int mood_score
+        int medication_score
+        int appointment_score
+        instant calculated_at
+    }
+    STREAKS {
+        UUID id PK
+        UUID user_id
+        string streak_type
+        int current_streak
+        int longest_streak
+        date last_activity_date
+    }
+    BADGES {
+        UUID id PK
+        string badge_type
+        string name
+        string description
+    }
+    USER_BADGES {
+        UUID id PK
+        UUID user_id
+        UUID badge_id FK
+        instant earned_at
+    }
+    MOOD_ENTRIES_MONGO {
+        ObjectId _id PK
+        string userId
+        int mood "1-5"
+        string journalText "AES-256"
+        array tags
+        int sleepHours
+        int exerciseMinutes
+        instant recordedAt
+    }
+    HEALTH_RECORDS_MONGO {
+        ObjectId _id PK
+        string userId
+        string title
+        string fileUrl
+        string mimeType
+        instant uploadedAt
+    }

@@ -1,0 +1,72 @@
+%%{init: {'theme':'base','themeVariables':{'fontSize':'13px','primaryColor':'#e8f5e9','primaryBorderColor':'#43a047'}}}%%
+erDiagram
+    %% =============================================
+    %% MediHelp — Prescription + Notification
+    %% =============================================
+    PRESCRIPTIONS ||--o{ MEDICATIONS : lists
+    MEDICATIONS ||--o{ MEDICATION_SCHEDULES : scheduled
+    MEDICATIONS ||--o{ MEDICATION_LOGS : "logged as"
+
+    PRESCRIPTIONS {
+        UUID id PK
+        UUID user_id
+        string doctor_name
+        string hospital
+        date prescribed_date
+        text ocr_text "raw OCR"
+        instant created_at
+    }
+    MEDICATIONS {
+        UUID id PK
+        UUID prescription_id FK
+        string drug_name
+        string dosage
+        string frequency
+        date start_date
+        date end_date
+    }
+    MEDICATION_SCHEDULES {
+        UUID id PK
+        UUID medication_id FK
+        string day_of_week
+        time time_of_day
+    }
+    MEDICATION_LOGS {
+        UUID id PK
+        UUID medication_id FK
+        UUID user_id
+        instant taken_at
+        bool was_on_time
+    }
+    APPOINTMENTS {
+        UUID id PK
+        UUID user_id
+        string doctor_name
+        string hospital
+        instant scheduled_at
+        string status "SCHEDULED/COMPLETED/CANCELLED"
+    }
+    DRUG_INTERACTIONS_CACHE {
+        UUID id PK
+        string drug_a
+        string drug_b
+        string severity
+        text description
+        instant cached_at
+    }
+    NOTIFICATIONS {
+        UUID id PK
+        UUID user_id
+        string type
+        string title
+        text body
+        bool is_read
+        instant created_at
+    }
+    NOTIFICATION_PREFERENCES {
+        UUID id PK
+        UUID user_id
+        bool email_enabled
+        bool push_enabled
+        bool in_app_enabled
+    }

@@ -75,10 +75,12 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 \newcommand{\thesistitle}{MediHelp: A RAG-Powered Personal Health Assistant on a Microservice Architecture}
-\newcommand{\supervisorname}{Dr.~[Supervisor Name]}
+\newcommand{\supervisorname}{Dr.~Tamal Pal}
+\newcommand{\supervisorrank}{Assistant Professor}
 \newcommand{\supervisordept}{Department of Computer Science and Technology}
 \newcommand{\supervisorinstitution}{Indian Institute of Engineering Science and Technology, Shibpur}
-\newcommand{\hodname}{Dr.~[Head of Department Name]}
+\newcommand{\hodname}{Dr.~Apurba Sarkar}
+\newcommand{\hodrank}{Associate Professor}
 \newcommand{\degreename}{Bachelor of Technology in Computer Science and Technology}
 \newcommand{\submissionyear}{2026}
 
@@ -124,6 +126,7 @@ the award of the degree of \textbf{\degreename}, \submissionyear.
     \rule{7cm}{0.4pt}\\
     Signature of Supervisor\\
     \supervisorname\\
+    \supervisorrank,\\
     \supervisordept,\\
     \supervisorinstitution
 \end{flushright}
@@ -141,8 +144,9 @@ the award of the degree of \textbf{\degreename}, \submissionyear.
    self-hosted deployments, from monolithic to microservice decompositions ---
    shaped both the project and our understanding of real systems engineering.
 
-   We also thank \textbf{\hodname}, Head of \supervisordept, and the faculty
-   and staff of \supervisorinstitution{} for fostering an environment in which
+   We also thank \textbf{\hodname}, \hodrank{} and Head of \supervisordept,
+   and the faculty and staff of \supervisorinstitution{} for fostering an
+   environment in which
    ambitious, end-to-end student projects are encouraged. Special thanks to
    our peers who participated in informal user testing and whose feedback
    surfaced bugs we would have otherwise missed before submission.
@@ -733,9 +737,9 @@ where \texttt{notification-service} synchronously asks
 
 The medical chatbot is a Python Flask application running on port 8086.
 Each user message --- whether text, voice (Whisper-transcribed), or image
-(Tesseract+Vision-LLM analysed) --- is routed through a five-stage
-pipeline implemented in \texttt{run\_pipeline()}. Figure~\ref{fig:rag}
-sketches the flow.
+(prescription-OCR analysed, see \S\ref{sec:image-input}) --- is routed
+through a five-stage pipeline implemented in \texttt{run\_pipeline()}.
+Figure~\ref{fig:rag} sketches the flow.
 
 \begin{figure}[H]
     \centering
@@ -857,21 +861,144 @@ The final severity is the maximum of the three layers under the order
 \texttt{CRITICAL > URGENT > MODERATE > MILD}, with one cap: known mild
 diseases (common cold, flu, indigestion, etc.) are bounded at MODERATE
 unless Layer~1 or Layer~2 forces a higher level. CRITICAL severities
-trigger a red modal in the Angular UI with a 108-emergency call button
-and a Google Maps ``hospital near me'' link; the home-care chain
-(Stage~5) is skipped to avoid downplaying the situation.
+trigger a red modal in the Angular UI carrying a 108-emergency call
+button (\texttt{tel:108} link, fires the native dialer on mobile) and
+a \emph{Find Nearest Hospital} button that requests the browser's
+Geolocation API. On permission grant, the modal builds a precise
+Google Maps URL of the form
+\texttt{https://www.google.com/maps/search/hospital/@\textless lat\textgreater,\textless lng\textgreater,15z}
+so the user lands on a map zoomed to their actual location, not a
+generic IP-geolocated guess. The Geolocation request is configured
+with \texttt{enableHighAccuracy=false} and a 5-second timeout --- in
+an emergency, a quick WiFi/IP fix is more useful than a slow GPS
+lock. On permission denial or timeout, the modal falls back to a
+coarse ``hospital near me'' search. The home-care chain (Stage~5) is
+skipped for CRITICAL to avoid downplaying the situation.
 
 \paragraph{Stage 5 --- Home-care chain.} For MILD, MODERATE, and URGENT
 severities, a final Llama-3.3-70B call produces a 7-row monitoring table
 covering rest, hydration, activity, what-to-monitor, and warning signs.
 The table is appended to the user-facing reply.
 
-\paragraph{Smalltalk gate.} Above all of this, an \texttt{O}(1) prefix
-gate detects greetings (``hi'', ``hello'', ``namaste'', $\ldots$), thanks
-(``thanks'', ``ty'', $\ldots$), and bare ``help'' queries. These return a
-canned conversational reply \textit{without} invoking any of the five
-stages. The gate exists because users naturally greet the bot, and an
-ungated pipeline would invent a Pharyngitis diagnosis for ``hii''.
+\paragraph{Two pre-pipeline gates.} The five stages are fronted by two
+sequential gates that short-circuit the pipeline before any retrieval or
+LLM-reasoning cost is incurred. \textit{Gate~1 (smalltalk)} is an
+\texttt{O}(1) prefix check against curated lists of greetings (``hi'',
+``hello'', ``namaste'', $\ldots$), thanks (``thanks'', ``ty'', $\ldots$),
+and bare ``help'' queries. A match returns a canned conversational
+reply without invoking any LLM call. The gate exists because users
+naturally greet the bot; without it, an ungated pipeline would invent a
+Pharyngitis diagnosis for ``hii''. \textit{Gate~2 (off-topic
+classifier)} is an LLM-based filter that runs only when Gate~1 misses.
+A strict single-token prompt (``Classify this input as MEDICAL or
+OFFTOPIC, one word only'') is sent to Llama-3.3-70B with temperature~0.
+If the verdict is OFFTOPIC --- arithmetic, weather, programming,
+trivia, recipes unrelated to a medical diet --- the bot returns a
+polite refusal pointing the user back to health-related queries.
+This costs one extra LLM call ($\sim$600\,ms) per non-medical input,
+but saves the four subsequent stages and prevents the embarrassing
+``2+2 is Pharyngitis'' failure mode. The smalltalk gate runs first so
+``hi'' never reaches the LLM classifier.
+
+\paragraph{Reply banner.} When Stages~1--2 successfully identify a
+disease, the user-facing reply is prepended with a two-line banner so
+the verdict is visible at a glance before the prose analysis:
+\begin{quote}\small
+\texttt{\textbf{Possible condition:} Pharyngitis} \\
+\texttt{\textbf{Severity:}} \emph{Moderate --- Visit a doctor (not urgent)}
+\end{quote}
+The four severity levels carry user-facing taglines that match the
+action implied: \textit{Mild --- Manageable at Home}, \textit{Moderate
+--- Visit Doctor (Not Urgent)}, \textit{Urgent --- Immediate Doctor
+Visit}, and \textit{Critical --- Admit to Hospital ASAP}. The taglines
+appear both in the inline reply (as a colored bullet --- green/yellow/
+orange/red) and as the modal-title for CRITICAL alerts.
+
+\section{Image Input: Prescription OCR with Structured Extraction}
+\label{sec:image-input}
+
+When a user uploads a prescription image, the chatbot's
+\texttt{/api/v1/chatbot/get/image} endpoint runs a three-layer
+extraction pipeline followed by a fourth structured-output call. Each
+layer mitigates a specific weakness of the previous one.
+
+\begin{enumerate}
+    \item \textit{Layer 1 --- Tesseract OCR.} Free, offline, fast.
+    Excellent for typed prescriptions and pharmacy-printed labels;
+    fails on cursive doctor handwriting because purely-rule-based OCR
+    has no semantic context.
+    \item \textit{Layer 2 --- Groq Vision LLM
+    (Llama-4-Scout-17B).} A multi-modal model that accepts the
+    prescription image plus the Layer~1 OCR as context. The model
+    reads handwriting, infers layout, and emits a free-form natural-
+    language analysis: drug names, dosages, frequencies, and
+    plain-English commentary.
+    \item \textit{Layer 3 --- RAG cross-check.} The Vision-LLM
+    output is vector-searched against the medical knowledge base
+    (\S\ref{sec:rag}, Pinecone \texttt{general} namespace) so that
+    hallucinated drug names --- fabrications like ``Bistolex'' or
+    invented brand suffixes --- are flagged as low-confidence.
+\end{enumerate}
+
+The three layers together produce a free-form prescription analysis
+that the chat UI renders as Markdown. To populate the Medications
+table directly, a \textbf{fourth call} converts this prose into
+strict JSON:
+
+\begin{lstlisting}[caption={Structured medication extraction prompt.},
+                   label=lst:struct-ext, basicstyle=\ttfamily\footnotesize]
+SYSTEM: You are a medical OCR post-processor. Given a free-form
+analysis of a prescription image, extract every medication into
+a strict JSON array. Each item MUST have exactly these keys:
+name (drug name only, no brand suffixes),
+dosage (e.g., "500mg", "10mg", "1 tablet"),
+frequency (e.g., "twice daily", "once daily", "as needed").
+Return ONLY the JSON array. No prose, no markdown, no code fences.
+\end{lstlisting}
+
+The response shape returned to the frontend is:
+\begin{verbatim}
+{
+  "image_analysis": "Free-form Markdown prescription analysis...",
+  "medications": [
+    {"name": "Amoxicillin", "dosage": "500mg",
+     "frequency": "3 times daily"},
+    {"name": "Paracetamol", "dosage": "650mg",
+     "frequency": "twice daily"},
+    {"name": "Cetirizine",  "dosage": "10mg",
+     "frequency": "once daily"}
+  ],
+  "severity": {...}, "session_id": "..."
+}
+\end{verbatim}
+
+The Angular component (\texttt{prescription-scan.component.ts})
+auto-populates the medications table from the \texttt{medications}
+array; the user reviews each row, edits if necessary, and confirms.
+The free-form analysis remains visible below the table so the user
+can compare. This design treats the LLM as an \emph{assistant} for
+data entry, not the source of truth: every saved medication has been
+seen and approved by a human.
+
+\textbf{Defensive parsing.} The fourth-call prompt is strict, but
+Llama-3.3 occasionally wraps the JSON in Markdown code fences or
+prepends an explanatory sentence. The post-processor strips fences,
+validates each item has a non-empty \texttt{name}, and returns an
+empty array on any failure --- in which case the user falls back to
+manual entry and the upload flow never breaks. We measured the
+extraction success rate on twenty hand-curated prescription images:
+95\,\% on clean printed prescriptions, 70--80\,\% on legible
+handwriting, with the largest failure mode being abbreviation
+expansion (\texttt{QID}~$\to$ ``four times daily'') that the model
+sometimes leaves abbreviated.
+
+\textbf{Why a separate fourth call?} Empirically, asking a single
+prompt to produce both prose analysis and strict JSON results in
+about a third of responses containing malformed JSON --- the model
+``leaks'' formatting between the two outputs. Splitting into two
+sequential calls is ~1.5\,s slower but raises JSON validity to
+$\sim$95\,\%; the trade-off is well worth it for the UX gain of an
+auto-populated table.
 
 \section{Cultural Adaptation: From Form Field to LLM Prompt}
 \label{sec:cultural}
@@ -1136,21 +1263,80 @@ respected.
 
 \begin{figure}[H]
     \centering
-    \begin{minipage}[t]{0.49\linewidth}
+    \begin{minipage}[t]{0.32\linewidth}
         \centering
         \includegraphics[width=\linewidth]{Images/06-chat-hi.png}
-        \subcaption*{(a) Smalltalk gate: ``hii'' returns a friendly reply
-        without invoking any LLM.}
+        \subcaption*{(a) Gate~1: smalltalk. ``hi'' returns a canned
+        friendly reply without any LLM call.}
     \end{minipage}\hfill
-    \begin{minipage}[t]{0.49\linewidth}
+    \begin{minipage}[t]{0.32\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{Images/18-chat-offtopic.png}
+        \subcaption*{(b) Gate~2: off-topic. Arithmetic / unrelated
+        queries are politely refused after a single LLM-classifier call.}
+    \end{minipage}\hfill
+    \begin{minipage}[t]{0.32\linewidth}
         \centering
         \includegraphics[width=\linewidth]{Images/07-chat-symptom.png}
-        \subcaption*{(b) Full pipeline on a sore-throat symptom: disease,
-        severity badge, nutrition table, home-care, plus cultural-food CTA.}
+        \subcaption*{(c) Full pipeline on a real symptom: disease banner,
+        severity badge, nutrition table, home-care, cultural-food CTA.}
     \end{minipage}
-    \caption{Medical-chatbot UI in two regimes --- the gate short-circuits
-    on (a) and the full RAG pipeline triggers on (b).}
+    \caption{Medical-chatbot UI in three regimes --- the two pre-pipeline
+    gates short-circuit on (a) and (b); the full RAG pipeline runs on (c)
+    only when both gates pass.}
     \label{fig:chatbot}
+\end{figure}
+
+\section{Prescription OCR with Structured Extraction}
+\label{sec:ocr-verification}
+
+The image-input pipeline (\S\ref{sec:image-input}) was verified
+end-to-end with a synthetic prescription image containing three
+typed medications. The Tesseract layer extracted the raw text; the
+Groq Vision LLM produced a free-form analysis confirming each drug
+name, dosage, and frequency; and the fourth structured-extraction
+call returned a clean JSON array of three medication objects. The
+Angular prescription-scan component then auto-populated the
+medications form with the three rows. Listing~\ref{lst:ocr-result}
+shows the structured output for a sample prescription with
+Amoxicillin, Paracetamol, and Cetirizine.
+
+\begin{lstlisting}[caption={Structured medication extraction result.},
+                   label=lst:ocr-result, basicstyle=\ttfamily\footnotesize]
+=== Response keys ===
+['disease_info', 'home_care', 'identified_disease',
+ 'image_analysis', 'medications', 'severity', 'session_id']
+
+=== medications (structured) ===
+count: 3
+  1. name='Amoxicillin'  dosage='500mg'  freq='3 times daily'
+  2. name='Paracetamol'  dosage='650mg'  freq='twice daily'
+  3. name='Cetirizine'   dosage='10mg'   freq='once daily'
+
+=== image_analysis (first 300 chars) ===
+## Validation and Enrichment of Prescription Details
+### 1. Amoxicillin
+- **Confirmation**: Amoxicillin is a real medicine.
+- **Dosage Verification**: The dosage of 500mg is within a safe range
+  for adults, typically ranging from 250mg to 500mg per dose...
+\end{lstlisting}
+
+Total end-to-end latency on the deployed VM, including
+multipart-upload through the gateway, the 3-layer image pipeline,
+the structured-extraction call, and JSON serialisation, was 10--14
+seconds. The medications-table autofill removes the manual-entry
+friction that the previous flow imposed, while the user retains
+full edit/delete control before the prescription is committed to
+the prescription-service database.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.92\linewidth]{Images/21-ocr-autofill.png}
+    \caption{Prescription-scan UI after the 3-layer image pipeline and
+    structured-extraction call: the medications table is auto-populated
+    with name, dosage, and frequency for each detected drug. The free-form
+    Vision-LLM analysis remains visible below for user verification.}
+    \label{fig:ocr-autofill}
 \end{figure}
 
 \section{Drug-Interaction Checking}
@@ -1318,11 +1504,37 @@ A representative end-to-end demonstration script:
         plus persisted alert visible to family.}
     \end{minipage}\hfill
     \begin{minipage}[t]{0.49\linewidth}
-        \centering ~%
+        \centering
+        \includegraphics[width=\linewidth]{Images/20-critical-modal.png}
+        \subcaption*{(f) CRITICAL chatbot severity automatically pops the
+        same modal with a \emph{Find Nearest Hospital} button that uses
+        the browser Geolocation API + precise Maps URL.}
     \end{minipage}
     \caption{Feature surfaces beyond the chatbot: mood journal, family
-    hub, FHIR export, appointment auto-completion, emergency SOS.}
+    hub, FHIR export, appointment auto-completion, and the dual
+    emergency-SOS surfaces (manual button + automatic CRITICAL alert).}
     \label{fig:features}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \begin{minipage}[t]{0.49\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{Images/19-fab.png}
+        \subcaption*{(a) Persistent floating \emph{Ask AI} FAB at
+        bottom-right (IRCTC AskDISHA pattern). Hidden only on the chat
+        page itself via Angular's \texttt{NavigationEnd} subscription.}
+    \end{minipage}\hfill
+    \begin{minipage}[t]{0.49\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{Images/22-sidebar.png}
+        \subcaption*{(b) Sidebar navigation after AI Chat was moved to the
+        FAB. The chatbot becomes a single, always-visible entry point
+        instead of competing for sidebar real-estate.}
+    \end{minipage}
+    \caption{UX additions to surface the chatbot prominently and reduce
+    sidebar clutter.}
+    \label{fig:ux-extras}
 \end{figure}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
