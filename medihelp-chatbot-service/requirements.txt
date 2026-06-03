@@ -9,7 +9,7 @@ langchain-community==0.3.26
 langchain-text-splitters==0.3.11
 langchain-pinecone==0.2.8
 langchain-groq==0.2.0
-langsmith==0.4.49
+langsmith==0.8.0
 
 # ── Vector DB ─────────────────────────────────────────────────────────────────
 pinecone[asyncio]==7.3.0
